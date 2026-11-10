@@ -176,6 +176,9 @@ textarea{min-height:80px;resize:vertical}
   .kv{font-size:20px}
 }
 .mobile-only,.fab,.nav button.mobile-only{display:none}
+body.ro .fab,body.ro [data-act]:not([data-act="syncNow"]):not([data-act="syncOff"]):not([data-act="export"]),body.ro [data-step],body.ro [data-sell],body.ro [data-adjp],body.ro [data-editp],body.ro [data-print],body.ro [data-edits],body.ro [data-adj],body.ro [data-edito],body.ro [data-delpr],body.ro [data-note],body.ro [data-editn],body.ro [data-restore],body.ro .ro-hide{display:none!important}
+body.ro [data-res],body.ro [data-paid],body.ro [data-count],body.ro [data-ostatus],body.ro .ro-lock{pointer-events:none}
+body.ro [data-count]{border-color:transparent;background:transparent}
 .sheet{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .sheet button{all:unset;cursor:pointer;padding:16px 14px;border:1px solid var(--line);border-radius:12px;font-weight:600;display:flex;flex-direction:column;gap:2px}
 .sheet button small{font-weight:400;color:var(--muted);font-size:12px}
@@ -343,24 +346,25 @@ function mergeState(Lc, Rc){
 let applyingRemote = false;
 function takeRemote(d){ applyingRemote = true; S = normalize(d); saveLocal(); applyingRemote = false; render(); }
 function schedulePush(){
-  if (applyingRemote || !syncOn()) return;
+  if (applyingRemote || !syncOn() || SY.readonly) return;
   changeSeq++; SY.dirty = true; saveSY();
   clearTimeout(pushT); pushT = setTimeout(() => syncNow(), 1500);
 }
 function syncLabel(){
   if (!syncOn()) return "Saved on this device";
+  if (SY.readonly && !SY.error) return "View only";
   if (SY.error) return SY.offline ? "Offline · will sync" : "Sync problem";
   if (SY.dirty) return "Syncing…";
   return SY.lastSync ? "Synced" : "Connecting…";
 }
-function showSync(){ const k = !syncOn() ? "" : SY.error ? "warn" : "ok"; setSync(k, syncLabel()); document.querySelectorAll("[data-sync]").forEach(el => { el.textContent = syncLabel(); el.dataset.state = k; }); }
+function showSync(){ document.body.classList.toggle("ro", !!(syncOn() && SY.readonly)); const k = !syncOn() ? "" : SY.error ? "warn" : "ok"; setSync(k, syncLabel()); document.querySelectorAll("[data-sync]").forEach(el => { el.textContent = syncLabel(); el.dataset.state = k; }); }
 async function syncNow(manual){
   if (!syncOn()) return;
   if (syncing){ syncAgain = true; return; }
   syncing = true; clearTimeout(pushT);
   try{
     for (let attempt = 0; attempt < 4; attempt++){
-      if (SY.dirty){
+      if (SY.dirty && !SY.readonly){
         if (!SY.sha){ const rm = await pullRemote(); if (!rm.missing){ SY.sha = rm.sha; takeRemote(mergeState(S, rm.data)); } }
         const seq = changeSeq, res = await pushRemote();
         if (res.conflict){ const rm = await pullRemote(); SY.sha = rm.missing ? null : rm.sha; if (!rm.missing) takeRemote(mergeState(S, rm.data)); continue; }
@@ -383,14 +387,15 @@ async function syncNow(manual){
     if (syncAgain || SY.dirty && !SY.error){ syncAgain = false; clearTimeout(pushT); pushT = setTimeout(() => syncNow(), 1200); }
   }
 }
-async function connectSync(owner, repo, token){
-  SY = {owner:owner.trim(), repo:repo.trim(), token:token.trim()};
+async function connectSync(owner, repo, token, readonly){
+  SY = {owner:owner.trim(), repo:repo.trim(), token:token.trim(), readonly:!!readonly};
   showSync();
   try{
     const rr = await ghFetch(""); if (!rr.ok) throw ghError(rr);
     const info = await rr.json(); if (!info.private){ throw new Error(`${SY.owner}/${SY.repo} is public. Make it private first so nobody can see your data.`); }
     const rm = await pullRemote();
     saveSY();
+    if (SY.readonly){ if (rm.missing) throw new Error("There's no shared data in this repository yet."); SY.sha = rm.sha; SY.dirty = false; SY.lastSync = new Date().toISOString(); saveSY(); takeRemote(rm.data); showSync(); toast("Connected in view-only mode"); return; }
     if (rm.missing){ SY.dirty = true; saveSY(); toast("Connected. Uploading this device's data…"); syncNow(); return; }
     const localHas = S.products.length || S.prints.length || S.orders.length;
     if (!localHas){ SY.sha = rm.sha; SY.dirty = false; saveSY(); takeRemote(rm.data); SY.lastSync = new Date().toISOString(); saveSY(); showSync(); toast("Connected. Cloud data loaded."); return; }
@@ -778,7 +783,7 @@ function ago(iso){ if (!iso) return "never"; const m = Math.round((Date.now()-ne
 function syncPanel(){
   if (syncOn()) return `<div class="list" style="gap:10px">
     <div class="row" style="justify-content:space-between"><span><span class="pill ${SY.error?(SY.offline?"warn":"bad"):"good"}">${esc(syncLabel())}</span></span><span class="meta">last sync ${ago(SY.lastSync)}</span></div>
-    <p class="meta" style="margin:0">Connected to <b>${esc(SY.owner)}/${esc(SY.repo)}</b>. Changes upload a moment after you make them, and the latest data loads whenever you open the app.</p>
+    <p class="meta" style="margin:0">Connected to <b>${esc(SY.owner)}/${esc(SY.repo)}</b>${SY.readonly?" in <b>view-only</b> mode. This device shows the latest data and can't change anything.":". Changes upload a moment after you make them, and the latest data loads whenever you open the app."}</p>
     ${SY.error?`<div class="alert ${SY.offline?"warn":"bad"}">${esc(SY.error)}</div>`:""}
     <div class="row"><button class="btn primary" data-act="syncNow">Sync now</button><button class="btn ghost danger" data-act="syncOff">Turn off on this device</button></div></div>`;
   return `<p class="meta">Keep your phone, computer and any other device in step. Your data is saved to a private repository in your GitHub account. Set it up once, then connect each device with the same token.</p>
@@ -790,12 +795,13 @@ function syncPanel(){
     <label class="f">GitHub account<input id="sy_owner" value="${esc(SY.owner||"WAV-SA")}" autocapitalize="off" autocorrect="off"></label>
     <label class="f">Repository<input id="sy_repo" value="${esc(SY.repo||"wav-data")}" autocapitalize="off" autocorrect="off"></label>
     <label class="f full">Token<input id="sy_token" type="password" autocomplete="off" autocapitalize="off" placeholder="github_pat_…"></label>
+    <label class="f check full"><input id="sy_ro" type="checkbox"> View only on this device (for someone you share the app with)</label>
   </div><div class="foot"><button class="btn primary" data-act="syncConnect">Connect</button></div>
   <p class="meta">The token stays on this device and only opens the wav-data repository.</p>`;
 }
 function vSettings(){
   const s = S.settings;
-  return head("Settings") + `<div class="grid2"><section class="panel"><h2>Costing</h2>
+  return head("Settings") + `<div class="grid2"><section class="panel ro-lock"><h2>Costing</h2>
   <div class="form">
     <label class="f">Workspace name<input id="s_ws" value="${esc(s.workspace)}"></label>
     <label class="f">Currency<input id="s_cur" value="${esc(s.currency||"SAR")}"></label>
@@ -1042,7 +1048,7 @@ function bind(){
     newProduct:()=>productForm(), newPrint:()=>printForm(), newSpool:()=>spoolForm(), newOrder:()=>S.products.length?orderForm():toast("Add a product first"),
     import:importFile, export:exportFile,
     syncNow:()=>syncNow(true), syncOff:()=>confirmBox("Turn off sync on this device? Your data stays here, and other devices keep syncing.","Turn off",disconnectSync),
-    syncConnect:()=>{ const o=$("#sy_owner").value, r=$("#sy_repo").value, t=$("#sy_token").value; if (!o.trim()||!r.trim()||!t.trim()) return toast("Fill in account, repository and token"); toast("Connecting…"); connectSync(o, r, t); },
+    syncConnect:()=>{ const o=$("#sy_owner").value, r=$("#sy_repo").value, t=$("#sy_token").value; if (!o.trim()||!r.trim()||!t.trim()) return toast("Fill in account, repository and token"); toast("Connecting…"); connectSync(o, r, t, $("#sy_ro").checked); },
     emptyTrash:()=>confirmBox("Permanently delete everything in the trash? This can't be undone.","Empty trash",()=>{ S.trash=[]; persist("trash"); render(); }),
     saveSettings:()=>{ Object.assign(S.settings,{workspace:$("#s_ws").value.trim()||"WAV", currency:$("#s_cur").value.trim()||"SAR", hour:n($("#s_hour").value), energy:n($("#s_energy").value), feePct:n($("#s_fee").value), packaging:n($("#s_pack").value), targetMargin:n($("#s_tm").value)}); persist("settings"); render(); toast("Settings saved"); }
   })[b.dataset.act]?.());
