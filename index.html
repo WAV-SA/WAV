@@ -1,0 +1,941 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="WAV">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f9f7f5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0c1a1c" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<style>*{box-sizing:border-box}html{-webkit-text-size-adjust:100%;color-scheme:light}body{margin:0;font:14px system-ui,-apple-system,sans-serif;-webkit-tap-highlight-color:transparent}img{max-width:100%}[hidden]{display:none!important}
+:root{padding-top:env(safe-area-inset-top,0px)}</style>
+<title>WAV Print Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: workshop console — left rail with the WAV mark, main bench with summary strip then working tables. Identity: WAV deep teal on warm paper, monoline geometric type. */
+:root{
+  --bg:#f9f7f5; --surface:#ffffff; --sunk:#f0ece8; --line:#e2ddd7; --ink:#10292c; --muted:#5f6c6d;
+  --accent:#12535b; --accent-ink:#ffffff; --accent-soft:#dbe8e9;
+  --good:#2f7a4b; --good-soft:#dcefe2; --warn:#a86a00; --warn-soft:#f7e8c8; --bad:#b23a2e; --bad-soft:#f6dcd8;
+  --f-display:"Outfit", "Century Gothic", system-ui, sans-serif;
+  --f-body:"Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0c1a1c; --surface:#122427; --sunk:#182e31; --line:#24403f; --ink:#e8f0ef; --muted:#93a7a8;
+  --accent:#5fb4bd; --accent-ink:#071618; --accent-soft:#16393d;
+  --good:#6cc48c; --good-soft:#1d3326; --warn:#e2b04f; --warn-soft:#3a2f17; --bad:#ec7f72; --bad-soft:#3d201c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0c1a1c; --surface:#122427; --sunk:#182e31; --line:#24403f; --ink:#e8f0ef; --muted:#93a7a8;
+  --accent:#5fb4bd; --accent-ink:#071618; --accent-soft:#16393d;
+  --good:#6cc48c; --good-soft:#1d3326; --warn:#e2b04f; --warn-soft:#3a2f17; --bad:#ec7f72; --bad-soft:#3d201c; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--ink)}
+body{font-family:var(--f-body);font-size:15px;line-height:1.5}
+.num,.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.app{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:100vh}
+.rail{border-right:1px solid var(--line);padding-block:20px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:16px;position:sticky;top:env(safe-area-inset-top,0px);height:100vh;display:flex;flex-direction:column;gap:20px}
+.brand{display:flex;flex-direction:column;gap:6px;padding:4px 12px 0}
+.logo{display:block;color:var(--accent);height:auto}
+.logo path{fill:none;stroke:currentColor;stroke-width:38;stroke-linecap:round;stroke-linejoin:round}
+.brand small{font-family:var(--f-display);font-weight:400;font-size:11px;letter-spacing:.32em;text-transform:uppercase;color:var(--muted)}
+.wave{height:10px;color:var(--accent);opacity:.35}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav button{all:unset;cursor:pointer;padding:9px 12px;border-radius:8px;display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-weight:500}
+.nav button:hover{background:var(--sunk);color:var(--ink)}
+.nav button[aria-current="true"]{background:var(--accent);color:var(--accent-ink)}
+.nav .count{font-family:var(--f-mono);font-size:12px;opacity:.75}
+.sync{margin-top:auto;font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.dot.ok{background:var(--good)} .dot.warn{background:var(--warn)}
+
+main{padding-block:24px 96px;padding-left:24px;padding-right:max(24px,env(safe-area-inset-right,0px));min-width:0}
+.head{display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:12px;margin-bottom:20px}
+h1{font-family:var(--f-display);font-weight:300;font-size:clamp(22px,3vw,30px);margin:0;letter-spacing:-.01em;text-wrap:balance}
+h2{font-family:var(--f-display);font-weight:500;font-size:16px;margin:0 0 12px;letter-spacing:.02em}
+.sub{color:var(--muted);margin:2px 0 0}
+.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:600}
+
+.btn{border:1px solid var(--line);background:var(--surface);padding:8px 14px;border-radius:8px;cursor:pointer;font-weight:500}
+.btn:hover{border-color:var(--ink)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.05)}
+.btn.danger{color:var(--bad)}
+.btn.sm{padding:4px 10px;font-size:13px}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+.strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:var(--r);background:var(--surface);margin-bottom:24px}
+.strip>div{padding:16px 18px;border-left:1px solid var(--line);min-width:0}
+.strip>div:first-child{border-left:0}
+.kv{font-family:var(--f-mono);font-size:24px;font-weight:600;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kv small{font-size:12px;font-weight:400;color:var(--muted);margin-left:4px}
+.kd{font-size:12px;color:var(--muted)}
+
+.grid2{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:20px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;min-width:0}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:600;padding:10px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+td.r,th.r{text-align:right}
+tbody tr:hover{background:var(--sunk)}
+.name{font-weight:600}
+.meta{font-size:12px;color:var(--muted)}
+
+.pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap}
+.pill.good{background:var(--good-soft);color:var(--good)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.pill.neutral{background:var(--sunk);color:var(--muted)}
+.sw{width:12px;height:12px;border-radius:50%;border:1px solid color-mix(in srgb,var(--ink) 25%,transparent);display:inline-block;flex:none}
+.swrow{display:flex;gap:3px;align-items:center}
+
+/* spool cards */
+.spools{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
+.spool{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px}
+.spool .top{display:flex;gap:12px;align-items:center}
+.reel{width:52px;height:52px;flex:none}
+.bar{height:6px;border-radius:3px;background:var(--sunk);overflow:hidden}
+.bar>i{display:block;height:100%;border-radius:3px}
+
+.list{display:flex;flex-direction:column;gap:10px}
+.item{display:flex;gap:12px;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px dashed var(--line)}
+.item:last-child{border-bottom:0}
+.empty{padding:28px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:var(--r)}
+
+.notes{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.note{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:8px}
+.note p{margin:0;white-space:pre-wrap}
+
+/* modal */
+.scrim{position:fixed;inset:0;background:color-mix(in srgb,#000 45%,transparent);display:flex;align-items:center;justify-content:center;padding:16px;z-index:40}
+.modal{background:var(--surface);border:1px solid var(--line);border-radius:14px;width:min(620px,100%);max-height:calc(100vh - 32px);overflow:auto;padding:22px}
+.modal h3{font-family:var(--f-display);font-weight:400;font-size:18px;margin:0 0 16px}
+.form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.form .full{grid-column:1/-1}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--muted);min-width:0}
+input,select,textarea{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;font-size:14px}
+textarea{min-height:80px;resize:vertical}
+.mat{display:grid;grid-template-columns:minmax(0,1fr) 90px auto;gap:8px;align-items:center}
+.calc{background:var(--sunk);border-radius:8px;padding:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;font-size:12px;color:var(--muted)}
+.calc b{display:block;font-family:var(--f-mono);font-size:15px;color:var(--ink)}
+.foot{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.check{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink);font-weight:500}
+.check input{width:auto}
+
+.toast{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;z-index:50}
+.tabs{display:flex;gap:4px;background:var(--sunk);padding:3px;border-radius:9px;width:max-content;max-width:100%;overflow-x:auto}
+.tabs button{all:unset;cursor:pointer;padding:6px 12px;border-radius:7px;font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap}
+.tabs button[aria-pressed="true"]{background:var(--surface);color:var(--ink)}
+.seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.seg label{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 8px;border:1px solid var(--line);border-radius:8px;cursor:pointer;font-weight:600;font-size:14px;color:var(--ink);text-align:center}
+.seg label small{font-weight:400;font-size:11px;color:var(--muted)}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.seg label.ok:has(input:checked){border-color:var(--good);background:var(--good-soft)}
+.seg label.ko:has(input:checked){border-color:var(--bad);background:var(--bad-soft)}
+.seg label:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.stepper{display:flex;align-items:center;gap:4px}
+.stepper input{width:64px;text-align:center;padding:5px 4px}
+.alert{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:8px;font-size:13px}
+.alert.warn{background:var(--warn-soft);color:var(--warn)}
+.alert.bad{background:var(--bad-soft);color:var(--bad)}
+
+@media (max-width:900px){
+  .grid2{grid-template-columns:minmax(0,1fr)}
+  .strip{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .strip>div:nth-child(3){border-left:0}
+  .strip>div:nth-child(n+3){border-top:1px solid var(--line)}
+}
+@media (max-width:720px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .rail{position:fixed;inset:auto 0 0 0;top:auto;height:auto;flex-direction:row;padding-block:6px calc(6px + env(safe-area-inset-bottom,0px));padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:max(8px,env(safe-area-inset-right,0px));background:var(--surface);border-right:0;border-top:1px solid var(--line);z-index:30;gap:0}
+  .brand,.sync{display:none}
+  .mlogo{display:block!important;margin-bottom:14px}
+  .nav{flex-direction:row;overflow-x:auto;width:100%;gap:2px}
+  .nav button{padding:8px 10px;font-size:13px;white-space:nowrap}
+  .nav .count{display:none}
+  .nav .lbl{font-size:0}
+  .nav .lbl::after{content:attr(data-short);font-size:11px}
+  main{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:18px 110px}
+  .form{grid-template-columns:minmax(0,1fr)}
+  .calc{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .kv{font-size:20px}
+}
+.mobile-only,.fab{display:none}
+.sheet{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.sheet button{all:unset;cursor:pointer;padding:16px 14px;border:1px solid var(--line);border-radius:12px;font-weight:600;display:flex;flex-direction:column;gap:2px}
+.sheet button small{font-weight:400;color:var(--muted);font-size:12px}
+.sheet button:active{background:var(--sunk)}
+@media (max-width:720px){
+  input,select,textarea{font-size:16px}
+  .nav .sec{display:none}
+  .mobile-only{display:flex}
+  .nav{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));overflow:visible}
+  .nav button{flex-direction:column;justify-content:center;gap:3px;padding:6px 2px;font-size:11px;border-radius:10px;text-align:center}
+  .nav button svg{width:22px;height:22px}
+  .nav button[aria-current="true"]{background:transparent;color:var(--accent)}
+  .fab{display:flex;position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(76px + env(safe-area-inset-bottom,0px));width:56px;height:56px;border-radius:50%;border:0;background:var(--accent);color:var(--accent-ink);font-size:30px;line-height:1;align-items:center;justify-content:center;box-shadow:0 6px 18px color-mix(in srgb,var(--ink) 25%,transparent);z-index:31;cursor:pointer}
+  .head .row .btn.primary,.head .row [data-act="newPrint"],.head .row [data-act="newOrder"]{display:none}
+  .head{margin-bottom:14px}
+  .tablewrap{border:0;background:transparent;overflow:visible}
+  .tablewrap table,.tablewrap tbody,.tablewrap tr,.tablewrap td{display:block;width:100%}
+  .tablewrap thead{display:none}
+  .tablewrap tr{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:10px}
+  .panel .tablewrap tr{background:var(--bg)}
+  .tablewrap tbody tr:hover{background:var(--surface)}
+  .tablewrap td{border:0;padding:5px 0;display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:right;min-width:0}
+  .tablewrap td::before{content:attr(data-label);font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;text-align:left;flex:none}
+  .tablewrap td:first-child{display:block;text-align:left;padding-bottom:8px;margin-bottom:4px;border-bottom:1px dashed var(--line)}
+  .tablewrap td:first-child::before,.tablewrap td[data-label=""]::before{content:none}
+  .tablewrap td[data-label=""]{justify-content:flex-end;padding-top:8px}
+  .tablewrap td.meta{max-width:none!important}
+  .stepper .btn{width:40px;height:36px;font-size:18px;padding:0}
+  .btn.sm{padding:7px 12px}
+  .strip .kv{font-size:19px}
+  .modal{border-radius:16px 16px 0 0;align-self:flex-end;max-height:calc(100vh - 40px);padding-bottom:calc(22px + env(safe-area-inset-bottom,0px))}
+  .scrim{align-items:flex-end;padding:0}
+  .toast{bottom:calc(88px + env(safe-area-inset-bottom,0px));max-width:calc(100% - 32px)}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+
+<div class="app">
+  <aside class="rail">
+    <div class="brand"><svg class="logo" viewBox="150 540 960 240" width="132" role="img" aria-label="WAV"><path d="M190 578 L285 745 L375 588 L465 745 L560 578"/><path d="M600 745 L712 586 L822 745"/><path d="M852 578 L963 745 L1074 578"/></svg><small id="wsName">Print studio</small></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="sync"><span class="dot" id="syncDot"></span><span id="syncText">Connecting…</span></div>
+  </aside>
+  <main id="main"></main>
+</div>
+<button class="fab" id="fab" aria-label="Quick add">+</button>
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+
+<script>
+(() => {
+const KEYS = ["products","spools","prints","orders","moves","ideas","lessons","settings","trash"];
+const blank = () => ({products:[],spools:[],prints:[],orders:[],moves:[],ideas:[],lessons:[],settings:{hour:2,energy:0.2,workspace:"WAV",currency:"SAR",feePct:0,packaging:0,targetMargin:50},trash:[]});
+let S = blank();
+let view = "home", db = null, mode = "local", loaded = false, filter = {};
+const LS = "wav-app-v1";
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)+Math.random().toString(36).slice(2));
+const n = v => { const x = parseFloat(v); return isFinite(x) ? x : 0; };
+const cur = () => S.settings.currency || "SAR";
+const money = v => n(v).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+const g = v => { const x = n(v); return (Math.round(x*100)/100).toLocaleString("en-US"); };
+const today = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset()*6e4).toISOString().slice(0,10); };
+const fmtDate = s => s ? new Date(s+"T00:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short"}) : "";
+const hrs = m => { m = n(m); const h = Math.floor(m/60), r = Math.round(m%60); return h ? `${h}h ${r? r+"m":""}`.trim() : `${r}m`; };
+const spool = id => S.spools.find(s => s.id === id);
+const product = id => S.products.find(p => p.id === id);
+const ppg = s => s && n(s.initial) ? n(s.price)/n(s.initial) : 0;
+const runRate = () => n(S.settings.hour) + n(S.settings.energy);
+
+function materialCost(materials){ return (materials||[]).reduce((a,m)=>a + n(m.grams)*ppg(spool(m.spoolId ?? m.id)), 0); }
+function unitCost(p){ return materialCost(p.materials) + n(p.minutes)/60*runRate() + n(p.extras); }
+function bomGrams(p){ const s = (p.materials||[]).reduce((a,m)=>a+n(m.grams),0); return s || n(p.grams); }
+function spoolState(s){ const r = n(s.remaining); if (r <= 0) return "bad"; if (r < n(s.min)) return "warn"; return "good"; }
+function stockState(p){ const s = n(p.stock); if (s <= 0) return "bad"; if (s < n(p.min)) return "warn"; return "good"; }
+function hex(c){ return /^#[0-9a-f]{3,8}$/i.test(c||"") ? c : "#888888"; }
+
+/* ---------- persistence ---------- */
+function saveLocal(){ try{ localStorage.setItem(LS, JSON.stringify(S)); }catch(e){} }
+function loadLocal(){ try{ const t = localStorage.getItem(LS); if (t) S = Object.assign(blank(), JSON.parse(t)); }catch(e){} }
+const pending = new Map();
+async function persist(...keys){
+  saveLocal();
+  if (mode !== "db") return;
+  for (const k of keys){
+    if (pending.get(k)) { pending.set(k, "again"); continue; }
+    pending.set(k, true);
+    try{
+      do{
+        if (pending.get(k) === "again") pending.set(k, true);
+        await db.doc("ws/"+k).set({v: JSON.parse(JSON.stringify(S[k]))});
+      } while (pending.get(k) === "again");
+    }catch(e){
+      toast(e && e.code === "quota_exceeded" ? "Storage is full. Empty the trash or export a backup." : "Couldn't save. Your change is kept on this device.");
+      setSync("warn","Saved on this device only");
+    }finally{ pending.delete(k); }
+  }
+}
+function setSync(kind, text){ $("#syncDot").className = "dot "+(kind||""); $("#syncText").textContent = text; }
+
+async function boot(){
+  loadLocal(); render();
+  try{ if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){}
+  if (!window.claude || !window.claude.use){ setSync("ok","Saved on this phone"); return; }
+  try{ db = await window.claude.use("db"); }catch(e){ db = null; }
+  if (!db){ setSync("warn","Saved on this device"); return; }
+  mode = "db";
+  const timer = setTimeout(()=> setSync("warn","Can't reach saved data yet"), 10000);
+  db.collection("ws").onSnapshot(snap => {
+    if (!snap.metadata.fromCache){ clearTimeout(timer); setSync("ok","Synced"); }
+    if (snap.empty && !snap.metadata.fromCache && !loaded){
+      loaded = true;
+      if (S.products.length || S.spools.length) persist(...KEYS); // move device data up
+      render(); return;
+    }
+    snap.docs.forEach(d => { if (KEYS.includes(d.id) && !pending.get(d.id)) S[d.id] = JSON.parse(JSON.stringify(d.data().v ?? (d.id==="settings"?{}:[]))); });
+    S = Object.assign(blank(), S); S.settings = Object.assign(blank().settings, S.settings||{});
+    loaded = true; saveLocal(); render();
+  }, err => { clearTimeout(timer); setSync("warn","Saved on this device only"); mode = "local"; });
+}
+
+/* ---------- business logic ---------- */
+function logMove(pid, delta, reason, note){
+  delta = Math.round(n(delta)); if (!delta) return;
+  const p = product(pid);
+  S.moves.unshift({id:uid(), date:today(), at:new Date().toISOString(), product:pid, delta, reason, note:note||"", after:p?n(p.stock):null});
+  S.moves = S.moves.slice(0,500);
+  persist("moves");
+}
+const OPEN = ["new","printing","ready"];
+function reserved(pid){ return S.orders.filter(o=>OPEN.includes(o.status)).reduce((a,o)=>a+(o.items||[]).filter(i=>i.product===pid).reduce((b,i)=>b+n(i.qty),0),0); }
+function available(p){ return n(p.stock) - reserved(p.id); }
+function suggestPrice(cost){ const m = n(S.settings.targetMargin)/100, f = n(S.settings.feePct)/100; const d = 1-m-f; return d>0.05 ? Math.ceil(cost/d) : 0; }
+function restockPlan(){
+  return S.products.map(p => { const need = Math.max(0, n(p.min) - available(p)); return {p, need}; }).filter(x=>x.need>0)
+    .map(x => ({...x, minutes:n(x.p.minutes)*x.need, mats:(x.p.materials||[]).filter(m=>n(m.grams)>0).map(m=>({spoolId:m.spoolId, grams:n(m.grams)*x.need}))}));
+}
+function deductSpools(usage, sign=-1){
+  usage.forEach(u => { const s = spool(u.id); if (s) s.remaining = Math.max(0, Math.round((n(s.remaining) + sign*n(u.grams))*100)/100); });
+}
+function logPrint(rec){
+  const p = product(rec.product);
+  const usage = rec.usage.filter(u => n(u.grams) > 0).map(u => { const s = spool(u.id); return {id:u.id, grams:n(u.grams), name:s?.name||"", color:s?.color||"", pricePerGram:+ppg(s).toFixed(4)}; });
+  const grams = usage.reduce((a,u)=>a+u.grams,0);
+  const cost = usage.reduce((a,u)=>a+u.grams*u.pricePerGram,0) + n(rec.minutes)/60*runRate() + (p ? n(p.extras)*n(rec.qty) : 0);
+  const qty = n(rec.qty)||1, goodQty = Math.max(0, Math.min(qty, Math.round(n(rec.goodQty))));
+  const pr = {id:uid(), name:p?.name||rec.name||"Print", product:rec.product, date:rec.date||today(), qty, goodQty, minutes:n(rec.minutes), grams:Math.round(grams*100)/100, usage, good:goodQty>0, failReason:goodQty<qty?(rec.failReason||""):"", notes:rec.notes||"", cost};
+  deductSpools(usage, -1);
+  if (p && goodQty > 0){
+    const before = n(p.stock), unit = cost/goodQty;
+    p.avgCost = before > 0 ? (n(p.avgCost)*before + unit*goodQty)/(before+goodQty) : unit;
+    p.stock = before + goodQty;
+    logMove(p.id, goodQty, "Printed");
+  }
+  S.prints.unshift(pr);
+  persist("prints","spools","products");
+}
+const goodOf = pr => pr.goodQty !== undefined ? n(pr.goodQty) : (pr.good ? n(pr.qty) : 0);
+function undoPrint(pr){
+  deductSpools(pr.usage||[], +1);
+  const p = product(pr.product);
+  if (p){ const b = n(p.stock); p.stock = Math.max(0, b - goodOf(pr)); logMove(p.id, p.stock-b, "Print deleted"); }
+}
+function resultPill(pr){
+  const gq = goodOf(pr), q = n(pr.qty)||1;
+  if (gq >= q) return `<span class="pill good">Success</span>`;
+  if (gq > 0) return `<span class="pill warn">Partial ${gq}/${q}</span>`;
+  return `<span class="pill bad">Failed</span>`;
+}
+const REASONS = ["Bed adhesion / warping","Spaghetti / detached","Layer shift","Clog / under-extrusion","Filament ran out","Stringing / quality","Power or network cut","Cancelled by me","Other"];
+function trash(kind, rec){
+  S[kind] = S[kind].filter(x => x.id !== rec.id);
+  S.trash.unshift({id:uid(), kind, record:rec, deletedAt:new Date().toISOString()});
+  S.trash = S.trash.slice(0,60);
+  persist(kind,"trash");
+  toast("Moved to trash", () => restore(S.trash[0]));
+}
+function restore(t){
+  if (!t) return;
+  S[t.kind] = [t.record, ...(S[t.kind]||[])];
+  if (t.kind === "prints"){ const pr = t.record; deductSpools(pr.usage||[], -1); const p = product(pr.product); if (p){ p.stock = n(p.stock) + goodOf(pr); logMove(p.id, goodOf(pr), "Print restored"); } persist("spools","products"); }
+  S.trash = S.trash.filter(x => x.id !== t.id);
+  persist(t.kind,"trash"); render(); toast("Restored");
+}
+
+/* ---------- toast & modal ---------- */
+let toastT;
+function toast(msg, undo){
+  const r = $("#toastRoot");
+  r.innerHTML = `<div class="toast row" role="status">${esc(msg)}${undo?` <button class="btn sm" id="tUndo" style="margin-left:8px">Undo</button>`:""}</div>`;
+  if (undo) $("#tUndo").onclick = () => { undo(); r.innerHTML = ""; };
+  clearTimeout(toastT); toastT = setTimeout(()=> r.innerHTML = "", 4500);
+}
+function modal(title, body, onMount){
+  $("#modalRoot").innerHTML = `<div class="scrim" id="scrim"><div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}"><h3>${esc(title)}</h3>${body}</div></div>`;
+  $("#scrim").addEventListener("mousedown", e => { if (e.target.id === "scrim") close(); });
+  document.addEventListener("keydown", escClose);
+  onMount && onMount($("#modalRoot .modal"));
+  const f = $("#modalRoot input, #modalRoot select, #modalRoot textarea"); f && f.focus();
+}
+function escClose(e){ if (e.key === "Escape") close(); }
+function close(){ $("#modalRoot").innerHTML = ""; document.removeEventListener("keydown", escClose); }
+function confirmBox(text, label, fn){
+  modal("Are you sure?", `<p>${esc(text)}</p><div class="foot"><button class="btn" data-x>Cancel</button><button class="btn primary" data-ok>${esc(label)}</button></div>`, m => {
+    m.querySelector("[data-x]").onclick = close;
+    m.querySelector("[data-ok]").onclick = () => { close(); fn(); };
+  });
+}
+const spoolOptions = sel => S.spools.map(s => `<option value="${s.id}" ${s.id===sel?"selected":""}>${esc(s.name.trim())} · ${g(s.remaining)}g left</option>`).join("");
+
+/* ---------- nav ---------- */
+const VIEWS = [
+  ["home","Overview"],["stock","Inventory"],["orders","Orders"],["reports","Sales"],["products","Products"],["prints","Print log"],["spools","Filament"],
+  ["notes","Ideas & lessons"],["settings","Settings"]
+];
+function counts(k){
+  if (k==="products") return S.products.length;
+  if (k==="stock") return restockPlan().length || "";
+  if (k==="prints") return S.prints.length;
+  if (k==="spools") return S.spools.filter(s=>spoolState(s)!=="good").length || S.spools.length;
+  if (k==="orders") return S.orders.filter(o=>o.status!=="delivered" && o.status!=="cancelled").length || "";
+  if (k==="notes") return S.ideas.length + S.lessons.length || "";
+  return "";
+}
+const ICON = {
+  home:'<path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/>',
+  stock:'<path d="M4 8l8-4 8 4v8l-8 4-8-4z"/><path d="M4 8l8 4 8-4M12 12v8"/>',
+  orders:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
+  prints:'<path d="M5 20h14M7 20v-4h10v4M9 16V6l3-3 3 3v10"/>',
+  more:'<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>'
+};
+const PRIMARY = ["home","stock","orders","prints"];
+const ic = k => `<svg class="mobile-only" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]||""}</svg>`;
+function renderNav(){
+  const short = {home:"Home", stock:"Stock", orders:"Orders", prints:"Prints"};
+  $("#nav").innerHTML = VIEWS.map(([k,l]) => `<button data-v="${k}" class="${PRIMARY.includes(k)?"":"sec"}" aria-current="${view===k}">${PRIMARY.includes(k)?ic(k):""}<span class="lbl" data-short="${short[k]||l}">${l}</span><span class="count">${counts(k)}</span></button>`).join("")
+    + `<button class="mobile-only" id="moreBtn" aria-current="${!PRIMARY.includes(view)}">${ic("more")}<span>More</span></button>`;
+  $("#nav").querySelectorAll("button[data-v]").forEach(b => b.onclick = () => go(b.dataset.v));
+  $("#moreBtn").onclick = () => modal("More", `<div class="sheet">${VIEWS.filter(v=>!PRIMARY.includes(v[0])).map(([k,l])=>`<button data-mv="${k}">${l}<small>${counts(k)?counts(k)+" items":"&nbsp;"}</small></button>`).join("")}</div>`, m => m.querySelectorAll("[data-mv]").forEach(b => b.onclick = () => { close(); go(b.dataset.mv); }));
+  $("#wsName").textContent = (S.settings.workspace && S.settings.workspace!=="WAV") ? S.settings.workspace : "Print studio";
+}
+function go(v){ view = v; try{ history.replaceState(null,"","#"+v); }catch(e){} render(); window.scrollTo(0,0); }
+
+/* ---------- views ---------- */
+function render(){
+  renderNav();
+  const fn = {home:vHome, stock:vStock, reports:vReports, products:vProducts, prints:vPrints, spools:vSpools, orders:vOrders, notes:vNotes, settings:vSettings}[view] || vHome;
+  $("#main").innerHTML = fn();
+  $("#main").querySelectorAll(".tablewrap table").forEach(t => { const hs = [...t.querySelectorAll("thead th")].map(th => th.textContent.trim()); t.querySelectorAll("tbody tr").forEach(tr => [...tr.children].forEach((td,i) => td.setAttribute("data-label", hs[i]||""))); });
+  bind();
+}
+
+const MLOGO = `<svg class="logo mlogo" style="display:none" viewBox="150 540 960 240" width="84" aria-hidden="true"><path d="M190 578 L285 745 L375 588 L465 745 L560 578"/><path d="M600 745 L712 586 L822 745"/><path d="M852 578 L963 745 L1074 578"/></svg>`;
+function head(title, sub, actions=""){ return `${MLOGO}<div class="head"><div><div class="eyebrow">${esc(S.settings.workspace||"WAV")}</div><h1>${title}</h1>${sub?`<p class="sub">${sub}</p>`:""}</div><div class="row">${actions}</div></div>`; }
+
+function vHome(){
+  if (!S.products.length && !S.spools.length) return head("Overview") + `<div class="empty"><p>No data yet. Import your backup file from the old site, or start by adding filament and products.</p><div class="row" style="justify-content:center"><button class="btn primary" data-act="import">Import backup (.json)</button><button class="btn" data-go="spools">Add filament</button></div></div>`;
+  const stockValue = S.products.reduce((a,p)=>a+n(p.stock)*n(p.price),0);
+  const stockCost = S.products.reduce((a,p)=>a+n(p.stock)*(n(p.avgCost)||unitCost(p)),0);
+  const filament = S.spools.reduce((a,s)=>a+n(s.remaining),0);
+  const filamentValue = S.spools.reduce((a,s)=>a+n(s.remaining)*ppg(s),0);
+  const delivered = S.orders.filter(o=>o.status==="delivered");
+  const revenue = delivered.reduce((a,o)=>a+orderTotal(o),0);
+  const printMin = S.prints.reduce((a,p)=>a+n(p.minutes),0);
+  const totQ = S.prints.reduce((a,p)=>a+(n(p.qty)||1),0); const goodRate = totQ ? Math.round(S.prints.reduce((a,p)=>a+goodOf(p),0)/totQ*100) : 0;
+
+  const alerts = [];
+  S.spools.forEach(s => { const st = spoolState(s); if (st!=="good") alerts.push([st, `${s.name.trim()} has ${g(s.remaining)} g left (alert at ${g(s.min)} g)`]); });
+  const lb = S.settings.lastBackup; if (S.products.length && (!lb || (Date.now()-new Date(lb))/864e5 > 7)) alerts.unshift(["warn", lb ? `Last backup was ${fmtDate(lb.slice(0,10))}. Your data lives on this phone only; export a backup to Files or iCloud.` : "Your data lives on this phone only. Export a backup to Files or iCloud from Settings."]);
+  const plan = restockPlan(); if (plan.length) alerts.push(["warn", `${plan.length} product${plan.length>1?"s":""} below minimum. Restock plan: ${plan.reduce((a,x)=>a+x.need,0)} units, about ${hrs(plan.reduce((a,x)=>a+x.minutes,0))} of printing.`]);
+  S.orders.filter(o=>OPEN.includes(o.status) && o.due && o.due < today()).forEach(o => alerts.push(["bad", `Order for ${o.customer||"a customer"} was due ${fmtDate(o.due)}`]));
+  S.orders.filter(o=>o.status==="delivered" && !o.paid).forEach(o => alerts.push(["warn", `${o.customer||"A customer"} hasn't paid ${money(orderTotal(o))} ${cur()} (delivered)`]));
+  S.products.forEach(p => { const can = canMake(p); if (can !== Infinity && can < 1) alerts.push(["bad", `Not enough filament to print ${p.name}`]); });
+
+  const top = [...S.products].map(p => ({p, c:unitCost(p)})).sort((a,b)=> (n(b.p.price)-b.c) - (n(a.p.price)-a.c));
+  return head("Overview", `${S.products.length} products · ${S.spools.length} spools · ${S.prints.length} prints logged`, `<button class="btn primary" data-act="newPrint">Log a print</button><button class="btn" data-act="newOrder">New order</button>`) + `
+  <div class="strip">
+    <div><div class="eyebrow">Stock at sale price</div><div class="kv">${money(stockValue)}<small>${cur()}</small></div><div class="kd">cost ${money(stockCost)} · profit ${money(stockValue-stockCost)}</div></div>
+    <div><div class="eyebrow">Filament on hand</div><div class="kv">${(filament/1000).toFixed(2)}<small>kg</small></div><div class="kd">worth ${money(filamentValue)} ${cur()}</div></div>
+    <div><div class="eyebrow">Printer time</div><div class="kv">${hrs(printMin)}</div><div class="kd">${goodRate}% successful prints</div></div>
+    <div><div class="eyebrow">Sales delivered</div><div class="kv">${money(revenue)}<small>${cur()}</small></div><div class="kd">net ${money(delivered.reduce((a,o)=>a+orderNet(o),0))} · ${S.orders.filter(o=>OPEN.includes(o.status)).length} open</div></div>
+  </div>
+  <div class="grid2">
+    <div class="list" style="gap:20px">
+      <section class="panel"><div class="row" style="justify-content:space-between"><h2>Needs attention</h2>${plan.length?`<button class="btn sm ghost" data-go="stock">Restock plan →</button>`:""}</div>${alerts.length ? `<div class="list">${alerts.map(([k,t])=>`<div class="alert ${k==="bad"?"bad":"warn"}"><span>${esc(t)}</span></div>`).join("")}</div>` : `<p class="meta">Everything is above its minimum.</p>`}</section>
+      <section class="panel"><h2>Margin per unit</h2>
+        <div class="tablewrap" style="border:0"><table><thead><tr><th>Product</th><th class="r">Cost</th><th class="r">Price</th><th class="r">Profit</th><th class="r">Can make</th></tr></thead><tbody>
+        ${top.map(({p,c})=>{ const pr=n(p.price)-c, pct=n(p.price)?pr/n(p.price)*100:0, can=canMake(p); return `<tr><td><div class="name">${esc(p.name)}</div><div class="meta">${esc(p.type)}</div></td><td class="r num">${money(c)}</td><td class="r num">${money(p.price)}</td><td class="r num">${money(pr)} <span class="pill ${pct>=50?"good":pct>=25?"warn":"bad"}">${Math.round(pct)}%</span></td><td class="r num">${can===Infinity?"—":can}</td></tr>`; }).join("")}
+        </tbody></table></div></section>
+    </div>
+    <div class="list" style="gap:20px">
+      <section class="panel"><h2>Filament</h2>${S.spools.slice().sort((a,b)=>n(a.remaining)/n(a.initial)-n(b.remaining)/n(b.initial)).slice(0,6).map(s=>{ const pct=Math.min(100,n(s.remaining)/(n(s.initial)||1)*100), st=spoolState(s); return `<div style="margin-bottom:12px"><div class="row" style="justify-content:space-between"><span class="row" style="gap:8px"><span class="sw" style="background:${hex(s.color)}"></span>${esc(s.name.trim())}</span><span class="num meta">${g(s.remaining)} g</span></div><div class="bar" style="margin-top:6px"><i style="width:${pct}%;background:var(--${st==="good"?"accent":st})"></i></div></div>`; }).join("")}<button class="btn sm ghost" data-go="spools">All filament →</button></section>
+      <section class="panel"><h2>Recent prints</h2>${S.prints.length ? `<div class="list" style="gap:0">${S.prints.slice(0,5).map(pr=>`<div class="item"><div><div class="name">${esc(product(pr.product)?.name||pr.name)} <span class="meta">×${n(pr.qty)}</span></div><div class="meta">${fmtDate(pr.date)} · ${hrs(pr.minutes)} · ${g(pr.grams)} g</div></div>${resultPill(pr)}</div>`).join("")}</div>` : `<p class="meta">No prints yet.</p>`}</section>
+    </div>
+  </div>`;
+}
+
+function canMake(p){
+  const mats = (p.materials||[]).filter(m=>n(m.grams)>0);
+  if (!mats.length) return Infinity;
+  return Math.min(...mats.map(m => { const s = spool(m.spoolId); return s ? Math.floor(n(s.remaining)/n(m.grams)) : 0; }));
+}
+
+function vProducts(){
+  const q = (filter.p||"").toLowerCase();
+  const list = S.products.filter(p => !q || (p.name+" "+p.type).toLowerCase().includes(q));
+  return head("Products", "Cost is filament + printer time + extras. Edit a product to change its recipe.", `<input id="pq" placeholder="Search" value="${esc(filter.p||"")}" style="width:180px"><button class="btn primary" data-act="newProduct">Add product</button>`) +
+  (list.length ? `<div class="tablewrap"><table><thead><tr><th>Product</th><th>Filament</th><th class="r">Print</th><th class="r">Unit cost</th><th class="r">Price</th><th class="r">Margin</th><th class="r">Stock</th><th></th></tr></thead><tbody>${list.map(p=>{
+    const c = unitCost(p), m = n(p.price)?(n(p.price)-c)/n(p.price)*100:0, st = stockState(p);
+    return `<tr><td><div class="name">${esc(p.name)}</div><div class="meta">${esc(p.type)}</div></td>
+    <td><div class="swrow">${(p.materials||[]).map(mm=>{const s=spool(mm.spoolId);return `<span class="sw" title="${esc(s?.name||"?")} ${g(mm.grams)} g" style="background:${hex(s?.color)}"></span>`}).join("")}<span class="meta num" style="margin-left:6px">${g(bomGrams(p))} g</span></div></td>
+    <td class="r num">${hrs(p.minutes)}</td><td class="r num">${money(c)}</td><td class="r num">${money(p.price)}</td>
+    <td class="r"><span class="pill ${m>=50?"good":m>=25?"warn":"bad"}">${Math.round(m)}%</span></td>
+    <td class="r"><span class="pill ${st}">${n(p.stock)} / ${n(p.min)}</span></td>
+    <td class="r"><div class="row" style="justify-content:flex-end;flex-wrap:nowrap"><button class="btn sm" data-print="${p.id}">Print</button><button class="btn sm ghost" data-editp="${p.id}">Edit</button></div></td></tr>`;}).join("")}</tbody></table></div>`
+  : `<div class="empty">${q?"No products match.":"No products yet."}</div>`);
+}
+
+function vPrints(){
+  const f = filter.pr || "all";
+  const list = S.prints.filter(p => f==="all" || (f==="good" ? goodOf(p)>=(n(p.qty)||1) : goodOf(p)<(n(p.qty)||1)));
+  const waste = S.prints.reduce((a,p)=>{ const q=n(p.qty)||1; return a + n(p.grams)*(q-goodOf(p))/q; },0);
+  return head("Print log", `${S.prints.length} prints · ${g(S.prints.reduce((a,p)=>a+n(p.grams),0))} g used · ${g(waste)} g wasted on failures`, `<div class="tabs">${[["all","All"],["good","Success"],["bad","Failed / partial"]].map(([k,l])=>`<button data-prf="${k}" aria-pressed="${f===k}">${l}</button>`).join("")}</div><button class="btn primary" data-act="newPrint">Log a print</button>`) +
+  (list.length ? `<div class="tablewrap"><table><thead><tr><th>Date</th><th>Product</th><th class="r">Qty</th><th>Filament used</th><th class="r">Time</th><th class="r">Cost</th><th>Result</th><th>Notes</th><th></th></tr></thead><tbody>${list.map(pr=>{
+    const p = product(pr.product);
+    const mismatch = p && pr.name && pr.name !== p.name;
+    return `<tr><td class="num">${fmtDate(pr.date)}</td><td><div class="name">${esc(p?.name||pr.name)}</div><div class="meta">${esc(p?.type||"Deleted product")}${mismatch?` · logged as “${esc(pr.name)}”`:""}</div></td><td class="r num">${n(pr.qty)}</td>
+    <td><div class="swrow">${(pr.usage||[]).filter(u=>n(u.grams)>0).map(u=>{const s=spool(u.id);return `<span class="sw" title="${esc(s?.name||u.name||"")}" style="background:${hex(s?.color||u.color)}"></span>`}).join("")}<span class="num meta" style="margin-left:6px">${g(pr.grams)} g</span></div></td>
+    <td class="r num">${hrs(pr.minutes)}</td><td class="r num">${money(pr.cost)}</td><td><button class="btn ghost sm" data-res="${pr.id}" title="Change result" style="padding:0">${resultPill(pr)}</button>${pr.failReason?`<div class="meta">${esc(pr.failReason)}</div>`:""}</td><td class="meta" style="max-width:220px">${esc(pr.notes)}</td>
+    <td class="r"><button class="btn sm ghost danger" data-delpr="${pr.id}">Delete</button></td></tr>`;}).join("")}</tbody></table></div>`
+  : `<div class="empty">No prints here yet.</div>`);
+}
+
+function reelSvg(s){
+  const pct = Math.min(1, n(s.remaining)/(n(s.initial)||1));
+  const r = 12 + 12*pct;
+  return `<svg class="reel" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="25" fill="var(--sunk)" stroke="var(--line)"/><circle cx="26" cy="26" r="${r.toFixed(1)}" fill="${hex(s.color)}" stroke="color-mix(in srgb,var(--ink) 20%,transparent)"/><circle cx="26" cy="26" r="9" fill="var(--surface)" stroke="var(--line)"/><circle cx="26" cy="26" r="3" fill="var(--line)"/></svg>`;
+}
+function vSpools(){
+  const total = S.spools.reduce((a,s)=>a+n(s.remaining),0);
+  return head("Filament", `${S.spools.length} spools · ${g(total)} g on hand`, `<button class="btn primary" data-act="newSpool">Add spool</button>`) +
+  (S.spools.length ? `<div class="spools">${S.spools.map(s=>{ const st=spoolState(s), pct=Math.min(100,n(s.remaining)/(n(s.initial)||1)*100);
+    const used = S.prints.reduce((a,pr)=>a+(pr.usage||[]).filter(u=>u.id===s.id).reduce((b,u)=>b+n(u.grams),0),0);
+    return `<article class="spool"><div class="top">${reelSvg(s)}<div style="min-width:0"><div class="name" style="overflow-wrap:anywhere">${esc(s.name.trim())}</div><div class="meta num">${money(ppg(s))} ${cur()}/g · ${money(s.price)} per spool</div></div></div>
+    <div><div class="row" style="justify-content:space-between"><span class="num" style="font-weight:600">${g(s.remaining)} g</span><span class="pill ${st}">${st==="good"?"OK":st==="warn"?"Low":"Empty"}</span></div><div class="bar" style="margin-top:6px"><i style="width:${pct}%;background:var(--${st==="good"?"accent":st})"></i></div><div class="meta" style="margin-top:6px">of ${g(s.initial)} g · ${g(used)} g logged in prints</div></div>
+    <div class="row"><button class="btn sm" data-adj="${s.id}">Weigh / adjust</button><button class="btn sm ghost" data-edits="${s.id}">Edit</button></div></article>`;}).join("")}</div>`
+  : `<div class="empty">No spools yet.</div>`);
+}
+
+const REASONS_ADJ = ["Count correction","Sold outside the app","Gift / sample","Damaged","Personal use","Returned by customer","Other"];
+function vStock(){
+  const units = S.products.reduce((a,p)=>a+n(p.stock),0), value = S.products.reduce((a,p)=>a+n(p.stock)*n(p.price),0);
+  const plan = restockPlan();
+  const rows = S.products.map(p => { const r = reserved(p.id), av = n(p.stock)-r, st = av<=0?"bad":av<n(p.min)?"warn":"good";
+    return `<tr><td><div class="name">${esc(p.name)}</div><div class="meta">${esc(p.type)}</div></td>
+    <td><div class="stepper"><button class="btn sm" data-step="${p.id}" data-d="-1" aria-label="Remove one">−</button><input class="num" data-count="${p.id}" type="number" min="0" value="${n(p.stock)}" aria-label="On hand for ${esc(p.name)}"><button class="btn sm" data-step="${p.id}" data-d="1" aria-label="Add one">+</button></div></td>
+    <td class="r num">${r||"—"}</td><td class="r"><span class="pill ${st}">${av}</span></td><td class="r num">${n(p.min)}</td><td class="r num">${money(n(p.stock)*n(p.price))}</td>
+    <td class="r"><div class="row" style="justify-content:flex-end;flex-wrap:nowrap"><button class="btn sm" data-sell="${p.id}" ${n(p.stock)?"":"disabled"}>Sell</button><button class="btn sm ghost" data-adjp="${p.id}">Adjust</button></div></td></tr>`; }).join("");
+  const need = {}; plan.forEach(x => x.mats.forEach(m => need[m.spoolId] = (need[m.spoolId]||0) + m.grams));
+  return head("Inventory", `${units} units on hand · ${money(value)} ${cur()} at sale price`, `<button class="btn" data-act="newPrint">Log a print</button>`) +
+  (S.products.length ? `<div class="tablewrap"><table><thead><tr><th>Product</th><th>On hand</th><th class="r">Reserved</th><th class="r">Available</th><th class="r">Min</th><th class="r">Value</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+  <p class="meta" style="margin:8px 2px 24px">Type a count or use − / + to correct stock. Reserved = units in open orders. Every change is logged below.</p>` : `<div class="empty">No products yet.</div>`) +
+  `<div class="grid2"><section class="panel"><h2>Restock plan</h2>${plan.length ? `<div class="tablewrap" style="border:0"><table><thead><tr><th>Print</th><th class="r">Units</th><th class="r">Time</th><th></th></tr></thead><tbody>${plan.map(x=>`<tr><td><div class="name">${esc(x.p.name)}</div><div class="meta">${esc(x.p.type)}</div></td><td class="r num">${x.need}</td><td class="r num">${hrs(x.minutes)}</td><td class="r"><button class="btn sm" data-print="${x.p.id}" data-q="${x.need}">Log print</button></td></tr>`).join("")}</tbody></table></div>
+    <div class="list" style="gap:6px;margin-top:12px"><div class="eyebrow">Filament needed</div>${Object.entries(need).map(([id,gr])=>{ const sp=spool(id), short = !sp || n(sp.remaining) < gr; return `<div class="row" style="justify-content:space-between"><span class="row" style="gap:8px"><span class="sw" style="background:${hex(sp?.color)}"></span>${esc(sp?.name.trim()||"Deleted spool")}</span><span class="num ${short?"":"meta"}" style="${short?"color:var(--bad);font-weight:600":""}">${g(gr)} g / ${g(sp?.remaining)} g${short?" · buy more":""}</span></div>`; }).join("")}</div>` : `<p class="meta">Every product is at or above its minimum.</p>`}</section>
+  <section class="panel"><h2>Stock history</h2>${S.moves.length ? `<div class="list" style="gap:0">${S.moves.slice(0,25).map(m=>`<div class="item"><div style="min-width:0"><div class="name">${esc(product(m.product)?.name||"Deleted product")} <span class="meta">${esc(m.reason)}${m.note?" · "+esc(m.note):""}</span></div><div class="meta">${fmtDate(m.date)}${m.after!=null?` · now ${m.after}`:""}</div></div><span class="num" style="font-weight:600;color:var(--${m.delta>0?"good":"bad"})">${m.delta>0?"+":""}${m.delta}</span></div>`).join("")}</div>` : `<p class="meta">Changes to stock will show here.</p>`}</section></div>`;
+}
+function setStock(pid, value, reason, note){
+  const p = product(pid); if (!p) return; const b = n(p.stock), v = Math.max(0, Math.round(n(value)));
+  if (v === b) return; p.stock = v; logMove(pid, v-b, reason, note); persist("products"); render();
+}
+function adjustStockForm(p){
+  modal("Adjust stock · "+p.name, `<p class="meta">${esc(p.type)} · on hand <b class="num">${n(p.stock)}</b></p><div class="form">
+    <label class="f">Change by<input id="j_d" type="number" value="0" placeholder="-2 or 5"></label>
+    <label class="f">Or set count to<input id="j_set" type="number" min="0" placeholder="${n(p.stock)}"></label>
+    <label class="f">Reason<select id="j_r">${REASONS_ADJ.map(r=>`<option>${r}</option>`).join("")}</select></label>
+    <label class="f">Note<input id="j_n" placeholder="optional"></label>
+  </div><div class="foot"><button class="btn" data-x>Cancel</button><button class="btn primary" id="jsave">Save</button></div>`, m => {
+    m.querySelector("[data-x]").onclick = close;
+    $("#jsave").onclick = () => { const set = $("#j_set").value.trim(); const target = set!=="" ? n(set) : n(p.stock)+n($("#j_d").value); close(); setStock(p.id, target, $("#j_r").value, $("#j_n").value.trim()); toast("Stock updated"); };
+  });
+}
+function sellForm(p){
+  modal("Quick sale · "+p.name, `<p class="meta">Records a delivered order and takes the units out of stock.</p><div class="form">
+    <label class="f">Units<input id="q_q" type="number" min="1" max="${n(p.stock)}" value="1"></label>
+    <label class="f">Unit price<input id="q_p" type="number" step="0.01" value="${n(p.price)}"></label>
+    <label class="f">Channel<select id="q_c">${CHANNELS.map(c=>`<option ${c===(S.settings.lastChannel||"In person")?"selected":""}>${c}</option>`).join("")}</select></label>
+    <label class="f">Customer<input id="q_cu" placeholder="optional"></label>
+    <label class="f check full"><input id="q_paid" type="checkbox" checked> Paid</label>
+  </div><div class="foot"><button class="btn" data-x>Cancel</button><button class="btn primary" id="qsave">Record sale</button></div>`, m => {
+    m.querySelector("[data-x]").onclick = close;
+    $("#qsave").onclick = () => { const q = Math.max(1, Math.round(n($("#q_q").value)));
+      const o = {id:uid(), customer:$("#q_cu").value.trim(), contact:"", channel:$("#q_c").value, paid:$("#q_paid").checked, status:"delivered", deliveredAt:today(), created:today(), due:"", discount:0, shipCharge:0, shipCost:0, feePct:n(S.settings.feePct), packaging:n(S.settings.packaging), notes:"Quick sale", items:[{product:p.id, qty:q, price:n($("#q_p").value)}]};
+      S.orders.unshift(o); S.settings.lastChannel = o.channel; stockMove(o, -1, "Sold"); persist("orders","products","settings"); close(); render(); toast(`Sold ${q} × ${p.name}`); };
+  });
+}
+
+function vReports(){
+  const per = filter.rp || "all";
+  const now = today().slice(0,7);
+  const months = []; { const d = new Date(); d.setDate(1); for (let i=5;i>=0;i--){ const x = new Date(d.getFullYear(), d.getMonth()-i, 1); months.push(x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")); } }
+  const inPer = o => { const m = orderDate(o).slice(0,7); return per==="all" || (per==="month" ? m===now : months.slice(3).includes(m)); };
+  const sold = S.orders.filter(o=>o.status==="delivered" && inPer(o));
+  const rev = sold.reduce((a,o)=>a+orderTotal(o),0), net = sold.reduce((a,o)=>a+orderNet(o),0), units = sold.reduce((a,o)=>a+(o.items||[]).reduce((b,i)=>b+n(i.qty),0),0);
+  const by = {}; sold.forEach(o => (o.items||[]).forEach(i => { const k=i.product; by[k] = by[k]||{u:0,r:0}; by[k].u += n(i.qty); by[k].r += n(i.qty)*n(i.price); }));
+  const ch = {}; sold.forEach(o => { const k=o.channel||"Not set"; ch[k] = ch[k]||{n:0,r:0}; ch[k].n++; ch[k].r += orderTotal(o); });
+  const cu = {}; S.orders.filter(o=>o.status==="delivered" && o.customer).forEach(o => { const k=o.customer.trim().toLowerCase(); cu[k] = cu[k]||{name:o.customer,n:0,r:0}; cu[k].n++; cu[k].r += orderTotal(o); });
+  const repeat = Object.values(cu).filter(c=>c.n>1).length;
+  const mdata = months.map(m => { const os = S.orders.filter(o=>o.status==="delivered" && orderDate(o).slice(0,7)===m); return {m, r:os.reduce((a,o)=>a+orderTotal(o),0), p:os.reduce((a,o)=>a+orderNet(o),0)}; });
+  return head("Sales", "Delivered orders only.", `<div class="tabs">${[["month","This month"],["q","Last 3 months"],["all","All time"]].map(([k,l])=>`<button data-rp="${k}" aria-pressed="${per===k}">${l}</button>`).join("")}</div>`) + `
+  <div class="strip">
+    <div><div class="eyebrow">Revenue</div><div class="kv">${money(rev)}<small>${cur()}</small></div><div class="kd">${sold.length} orders</div></div>
+    <div><div class="eyebrow">Net profit</div><div class="kv">${money(net)}<small>${cur()}</small></div><div class="kd">${rev?Math.round(net/rev*100):0}% of revenue</div></div>
+    <div><div class="eyebrow">Units sold</div><div class="kv">${units}</div><div class="kd">avg order ${money(sold.length?rev/sold.length:0)}</div></div>
+    <div><div class="eyebrow">Customers</div><div class="kv">${Object.keys(cu).length}</div><div class="kd">${repeat} came back</div></div>
+  </div>
+  <section class="panel" style="margin-bottom:20px"><div class="row" style="justify-content:space-between"><h2>Last 6 months</h2><span class="row meta" style="gap:12px"><span class="row" style="gap:5px"><i class="sw" style="background:var(--accent);border:0;border-radius:2px"></i>Revenue</span><span class="row" style="gap:5px"><i class="sw" style="background:var(--good);border:0;border-radius:2px"></i>Net profit</span></span></div>${barChart(mdata)}</section>
+  <div class="grid2">
+    <section class="panel"><h2>Best sellers</h2>${Object.keys(by).length?`<div class="tablewrap" style="border:0"><table><thead><tr><th>Product</th><th class="r">Units</th><th class="r">Revenue</th></tr></thead><tbody>${Object.entries(by).sort((a,b)=>b[1].u-a[1].u).map(([k,v])=>`<tr><td><div class="name">${esc(product(k)?.name||"Deleted")}</div><div class="meta">${esc(product(k)?.type||"")}</div></td><td class="r num">${v.u}</td><td class="r num">${money(v.r)}</td></tr>`).join("")}</tbody></table></div>`:`<p class="meta">No delivered orders in this period. Record sales from Orders or the Sell button in Inventory.</p>`}</section>
+    <section class="panel"><h2>By channel</h2>${Object.keys(ch).length?Object.entries(ch).sort((a,b)=>b[1].r-a[1].r).map(([k,v])=>`<div style="margin-bottom:10px"><div class="row" style="justify-content:space-between"><span>${esc(k)} <span class="meta">${v.n} order${v.n>1?"s":""}</span></span><span class="num">${money(v.r)}</span></div><div class="bar" style="margin-top:5px"><i style="width:${rev?v.r/rev*100:0}%;background:var(--accent)"></i></div></div>`).join(""):`<p class="meta">Nothing yet.</p>`}
+      ${Object.keys(cu).length?`<h2 style="margin-top:20px">Top customers</h2>${Object.values(cu).sort((a,b)=>b.r-a.r).slice(0,5).map(c=>`<div class="item"><span>${esc(c.name)} <span class="meta">${c.n} order${c.n>1?"s":""}</span></span><span class="num">${money(c.r)}</span></div>`).join("")}`:""}</section>
+  </div>`;
+}
+function barChart(d){
+  const W=640,H=200,L=44,B=24,T=10, max = Math.max(1, ...d.map(x=>Math.max(x.r,x.p)));
+  const step = Math.pow(10, Math.floor(Math.log10(max))), top = Math.ceil(max/step)*step, ticks=[0,top/2,top];
+  const y = v => T + (H-T-B)*(1 - Math.max(0,v)/top), cw = (W-L)/d.length, bw = Math.min(26, cw/3);
+  const mn = m => new Date(m+"-01T00:00:00").toLocaleDateString("en-GB",{month:"short"});
+  return `<div style="overflow-x:auto"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:420px;height:auto;display:block" role="img" aria-label="Monthly revenue and profit">
+  ${ticks.map(t=>`<line x1="${L}" x2="${W}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)" ${t?'stroke-dasharray="3 4"':""}/><text x="${L-8}" y="${y(t)+4}" text-anchor="end" font-size="11" fill="var(--muted)" font-family="JetBrains Mono, monospace">${t>=1000?(t/1000)+"k":t}</text>`).join("")}
+  ${d.map((x,i)=>{ const cx = L + cw*i + cw/2; return `<rect x="${cx-bw-1}" y="${y(x.r)}" width="${bw}" height="${y(0)-y(x.r)}" rx="3" fill="var(--accent)"><title>${mn(x.m)} revenue ${money(x.r)}</title></rect><rect x="${cx+1}" y="${y(x.p)}" width="${bw}" height="${y(0)-y(x.p)}" rx="3" fill="var(--good)"><title>${mn(x.m)} net ${money(x.p)}</title></rect><text x="${cx}" y="${H-6}" text-anchor="middle" font-size="11" fill="var(--muted)">${mn(x.m)}</text>`; }).join("")}
+  </svg></div>`;
+}
+
+const STATUSES = [["new","New","neutral"],["printing","Printing","warn"],["ready","Ready","good"],["delivered","Delivered","good"],["cancelled","Cancelled","bad"]];
+const CHANNELS = ["Online store","Instagram","WhatsApp","TikTok","Snapchat","In person","Bazaar / exhibition","Other"];
+function orderSub(o){ return (o.items||[]).reduce((a,i)=>a+n(i.qty)*n(i.price),0); }
+function orderTotal(o){ return orderSub(o) - n(o.discount) + n(o.shipCharge); }
+function orderFees(o){ return orderTotal(o) * n(o.feePct ?? S.settings.feePct)/100; }
+function orderNet(o){ return orderTotal(o) - orderFees(o) - n(o.shipCost) - n(o.packaging ?? S.settings.packaging) - orderCost(o); }
+function orderDate(o){ return o.deliveredAt || o.created || o.due || ""; }
+function orderCost(o){ return (o.items||[]).reduce((a,i)=>{ const p=product(i.product); return a + n(i.qty)*(p?(n(p.avgCost)||unitCost(p)):0); },0); }
+function vOrders(){
+  const f = filter.o || "open";
+  const list = S.orders.filter(o => f==="all" || (f==="open" ? !["delivered","cancelled"].includes(o.status) : o.status===f));
+  const unpaid = S.orders.filter(o=>!o.paid && o.status!=="cancelled").reduce((a,o)=>a+orderTotal(o),0);
+  return head("Orders", `Delivered orders leave stock automatically.${unpaid?` <b class="num">${money(unpaid)} ${cur()}</b> still unpaid.`:""}`, `<div class="tabs">${[["open","Open"],["delivered","Delivered"],["all","All"]].map(([k,l])=>`<button data-of="${k}" aria-pressed="${f===k}">${l}</button>`).join("")}</div><button class="btn primary" data-act="newOrder" ${S.products.length?"":"disabled"}>New order</button>`) +
+  (list.length ? `<div class="tablewrap"><table><thead><tr><th>Customer</th><th>Items</th><th>Due</th><th class="r">Total</th><th class="r">Net profit</th><th>Payment</th><th>Status</th><th></th></tr></thead><tbody>${list.map(o=>{
+    const st = STATUSES.find(s=>s[0]===o.status)||STATUSES[0], t=orderTotal(o);
+    const short = (o.items||[]).some(i=>{const p=product(i.product);return p && n(p.stock)<n(i.qty)}) && !["delivered","cancelled"].includes(o.status);
+    return `<tr><td><div class="name">${esc(o.customer||"—")}</div><div class="meta">${esc([o.channel,o.contact].filter(Boolean).join(" · "))}</div></td>
+    <td>${(o.items||[]).map(i=>`<div>${n(i.qty)}× ${esc(product(i.product)?.name||"?")} <span class="meta">${esc(product(i.product)?.type||"")}</span></div>`).join("")}${short?`<span class="pill warn">Not enough stock</span>`:""}</td>
+    <td class="num">${fmtDate(o.due)}</td><td class="r num">${money(t)}</td><td class="r num" style="color:var(--${orderNet(o)>=0?"ink":"bad"})">${money(orderNet(o))}</td><td><button class="btn ghost sm" style="padding:0" data-paid="${o.id}" title="Toggle payment">${o.paid?`<span class="pill good">Paid</span>`:`<span class="pill warn">Unpaid</span>`}</button></td>
+    <td><select data-ostatus="${o.id}" aria-label="Status" style="width:auto">${STATUSES.map(s=>`<option value="${s[0]}" ${s[0]===o.status?"selected":""}>${s[1]}</option>`).join("")}</select></td>
+    <td class="r"><button class="btn sm ghost" data-edito="${o.id}">Edit</button></td></tr>`;}).join("")}</tbody></table></div>`
+  : `<div class="empty">${S.products.length?"No orders here.":"Add a product before taking orders."}</div>`);
+}
+
+function vNotes(){
+  const col = (kind, title, hint) => `<section><div class="row" style="justify-content:space-between;margin-bottom:10px"><h2 style="margin:0">${title}</h2><button class="btn sm" data-note="${kind}">Add</button></div>
+    ${S[kind].length ? `<div class="notes">${S[kind].map(x=>`<div class="note"><div class="row" style="justify-content:space-between"><span class="meta num">${fmtDate(x.date)}</span>${x.tag?`<span class="pill neutral">${esc(x.tag)}</span>`:""}</div><div class="name">${esc(x.title)}</div><p class="meta">${esc(x.body)}</p><div class="row"><button class="btn sm ghost" data-editn="${kind}:${x.id}">Edit</button></div></div>`).join("")}</div>` : `<div class="empty">${hint}</div>`}</section>`;
+  return head("Ideas & lessons") + `<div class="list" style="gap:28px">${col("ideas","Product ideas","Capture designs you want to try next.")}${col("lessons","Lessons learned","Note what worked: settings, supports, failures to avoid.")}</div>`;
+}
+
+function vSettings(){
+  const s = S.settings;
+  return head("Settings") + `<div class="grid2"><section class="panel"><h2>Costing</h2>
+  <div class="form">
+    <label class="f">Workspace name<input id="s_ws" value="${esc(s.workspace)}"></label>
+    <label class="f">Currency<input id="s_cur" value="${esc(s.currency||"SAR")}"></label>
+    <label class="f">Printer cost per hour<input id="s_hour" type="number" step="0.01" value="${n(s.hour)}"></label>
+    <label class="f">Electricity per hour<input id="s_energy" type="number" step="0.01" value="${n(s.energy)}"></label>
+    <div class="full eyebrow" style="margin-top:6px">Store</div>
+    <label class="f">Payment / platform fee %<input id="s_fee" type="number" step="0.1" value="${n(s.feePct)}"></label>
+    <label class="f">Packaging per order<input id="s_pack" type="number" step="0.01" value="${n(s.packaging)}"></label>
+    <label class="f">Target profit margin %<input id="s_tm" type="number" step="1" value="${n(s.targetMargin)}"></label>
+    <p class="meta full">The fee is the cut your store platform or payment gateway takes from each order. Suggested prices aim for the target margin after this fee.</p>
+    <p class="meta full">Each print hour costs <b class="num">${money(runRate())} ${cur()}</b>. Unit cost = filament grams × price per gram + hours × ${money(runRate())} + extras (magnets, NFC chips…).</p>
+  </div><div class="foot"><button class="btn primary" data-act="saveSettings">Save settings</button></div></section>
+  <section class="panel"><h2>Backup</h2><p class="meta">Your data is stored on this phone. Export a backup regularly and save it to Files or iCloud Drive. ${S.settings.lastBackup?`Last backup: ${fmtDate(S.settings.lastBackup.slice(0,10))}.`:"No backup yet."}</p>
+  <div class="row"><button class="btn primary" data-act="export">Export backup</button><button class="btn" data-act="import">Import backup</button></div>
+  <h2 style="margin-top:24px">Trash</h2>${S.trash.length?`<div class="list" style="gap:0">${S.trash.map(t=>`<div class="item"><div><div class="name">${esc(t.record.name||t.record.title||t.record.customer||"Item")}</div><div class="meta">${esc(t.kind)} · ${t.deletedAt?new Date(t.deletedAt).toLocaleDateString("en-GB"):""}</div></div><button class="btn sm" data-restore="${t.id}">Restore</button></div>`).join("")}</div><button class="btn sm ghost danger" data-act="emptyTrash" style="margin-top:8px">Empty trash</button>`:`<p class="meta">Trash is empty.</p>`}
+  </section></div>`;
+}
+
+/* ---------- forms ---------- */
+function productForm(p){
+  const isNew = !p; p = p ? JSON.parse(JSON.stringify(p)) : {id:uid(), name:"WAV"+String(S.products.length+1).padStart(3,"0"), type:"", minutes:60, extras:0, price:0, min:5, stock:0, avgCost:0, materials:[{spoolId:S.spools[0]?.id||"", grams:0}]};
+  if (!p.materials || !p.materials.length) p.materials = [{spoolId:p.spoolId||S.spools[0]?.id||"", grams:n(p.grams)}];
+  const matRow = (m,i) => `<div class="mat" data-mi="${i}"><select data-mspool aria-label="Spool">${spoolOptions(m.spoolId)}</select><input data-mg type="number" step="0.01" min="0" value="${n(m.grams)}" aria-label="Grams"><button class="btn sm ghost" data-mdel aria-label="Remove">✕</button></div>`;
+  modal(isNew?"Add product":"Edit "+p.name, `<div class="form">
+    <label class="f">Code<input id="p_name" value="${esc(p.name)}"></label>
+    <label class="f">Name / type<input id="p_type" value="${esc(p.type)}"></label>
+    <div class="full"><div class="eyebrow" style="margin-bottom:6px">Filament per unit (g)</div><div class="list" id="mats" style="gap:6px">${p.materials.map(matRow).join("")}</div><button class="btn sm" id="addMat" style="margin-top:6px">Add colour</button></div>
+    <label class="f">Print time (min)<input id="p_min" type="number" value="${n(p.minutes)}"></label>
+    <label class="f">Extras per unit (${cur()})<input id="p_ext" type="number" step="0.01" value="${n(p.extras)}"></label>
+    <label class="f">Sale price (${cur()})<input id="p_price" type="number" step="0.01" value="${n(p.price)}"></label>
+    <label class="f">Minimum stock<input id="p_minst" type="number" value="${n(p.min)}"></label>
+    <label class="f">In stock<input id="p_stock" type="number" value="${n(p.stock)}"></label>
+    <label class="f check" style="align-self:end"><input id="p_nfc" type="checkbox" ${p.nfc?"checked":""}> Has NFC chip</label>
+    <div class="full calc" id="pcalc"></div>
+  </div><div class="foot">${isNew?"":`<button class="btn danger" id="pdel" style="margin-right:auto">Delete</button>`}<button class="btn" data-x>Cancel</button><button class="btn primary" id="psave">Save</button></div>`, m => {
+    const read = () => { p.materials = [...m.querySelectorAll("[data-mi]")].map(r=>({spoolId:r.querySelector("[data-mspool]").value, grams:n(r.querySelector("[data-mg]").value)})); Object.assign(p,{name:$("#p_name").value.trim(), type:$("#p_type").value.trim(), minutes:n($("#p_min").value), extras:n($("#p_ext").value), price:n($("#p_price").value), min:n($("#p_minst").value), stock:n($("#p_stock").value), nfc:$("#p_nfc").checked}); p.grams = Math.round(p.materials.reduce((a,x)=>a+x.grams,0)*100)/100; };
+    const calc = () => { read(); const mc=materialCost(p.materials), tc=n(p.minutes)/60*runRate(), c=mc+tc+n(p.extras), pr=n(p.price)-c; $("#pcalc").innerHTML = `<div>Filament<b>${money(mc)}</b></div><div>Printer time<b>${money(tc)}</b></div><div>Unit cost<b>${money(c)}</b></div><div>Profit<b style="color:var(--${pr>=0?"good":"bad"})">${money(pr)}</b></div><div>Suggested price<b>${suggestPrice(c)?money(suggestPrice(c)):"—"}</b><button class="btn sm ghost" type="button" id="useSug" style="padding:0;margin-top:2px">Use it</button></div>`; const u=$("#useSug"); if (u) u.onclick = () => { $("#p_price").value = suggestPrice(c); calc(); }; };
+    const wire = () => m.querySelectorAll("[data-mdel]").forEach(b => b.onclick = () => { b.closest("[data-mi]").remove(); calc(); });
+    m.addEventListener("input", calc); m.addEventListener("change", calc); wire(); calc();
+    $("#addMat").onclick = () => { $("#mats").insertAdjacentHTML("beforeend", matRow({spoolId:S.spools[0]?.id, grams:0}, Date.now())); wire(); };
+    m.querySelector("[data-x]").onclick = close;
+    $("#psave").onclick = () => { try{ read(); if (!p.name){ $("#p_name").focus(); return; } p.spoolId = ""; const before = isNew ? 0 : n(product(p.id)?.stock); if (!isNew){ const i=S.products.findIndex(x=>x.id===p.id); S.products[i]=p; } else S.products.push(p); if (n(p.stock)!==before) logMove(p.id, n(p.stock)-before, isNew?"Opening stock":"Edited in product"); persist("products"); close(); render(); toast("Product saved"); }catch(e){ console.error(e); toast("Couldn't save: "+(e.message||e)); } };
+    if (!isNew) $("#pdel").onclick = () => { close(); trash("products", product(p.id)); render(); };
+  });
+}
+
+function printForm(pid, qty0){
+  if (!S.products.length){ toast("Add a product first"); return; }
+  let p = product(pid) || S.products[0];
+  const usageRows = (prod, qty) => S.spools.map(s => { const m=(prod.materials||[]).find(x=>x.spoolId===s.id); return {id:s.id, grams: m ? Math.round(n(m.grams)*qty*100)/100 : 0}; });
+  modal("Log a print", `<div class="form">
+    <label class="f full">Product<select id="r_p">${S.products.map(x=>`<option value="${x.id}" ${x.id===p.id?"selected":""}>${esc(x.name)} · ${esc(x.type)}</option>`).join("")}</select></label>
+    <label class="f">Date<input id="r_date" type="date" value="${today()}"></label>
+    <label class="f">Units in this print<input id="r_qty" type="number" min="1" value="${n(qty0)||1}"></label>
+    <label class="f">Print time (min)<input id="r_min" type="number" value="${n(p.minutes)}"></label>
+    <div class="full"><div class="eyebrow" style="margin-bottom:6px">How did it go?</div>${resultFields(1)}</div>
+    <div class="full"><div class="eyebrow" style="margin-bottom:6px">Filament used (g) – filled from the recipe, adjust to the slicer or scale</div><div id="r_use" class="list" style="gap:6px"></div></div>
+    <label class="f full">Notes<input id="r_notes" placeholder="e.g. layer shift at 40%"></label>
+    <div class="full calc" id="rcalc"></div>
+  </div><div class="foot"><button class="btn" data-x>Cancel</button><button class="btn primary" id="rsave">Save print</button></div>`, m => {
+    const fill = () => { p = product($("#r_p").value); const q = n($("#r_qty").value)||1; $("#r_min").value = n(p.minutes)*q;
+      const rows = usageRows(p,q).filter(u=>u.grams>0); const used = new Set(rows.map(r=>r.id));
+      $("#r_use").innerHTML = rows.map(u=>useRow(u)).join("") + `<details><summary class="meta" style="cursor:pointer">Other spools</summary><div class="list" style="gap:6px;margin-top:6px">${S.spools.filter(s=>!used.has(s.id)).map(s=>useRow({id:s.id,grams:0})).join("")}</div></details>`; calc(); };
+    const useRow = u => { const s=spool(u.id); return `<div class="mat" style="grid-template-columns:minmax(0,1fr) 100px"><span class="row" style="gap:8px;min-width:0"><span class="sw" style="background:${hex(s.color)}"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.name.trim())}</span><span class="meta num">${g(s.remaining)} left</span></span><input type="number" step="0.01" min="0" data-use="${s.id}" value="${u.grams}" aria-label="Grams of ${esc(s.name)}"></div>`; };
+    const read = () => { const q = n($("#r_qty").value)||1; return {product:$("#r_p").value, date:$("#r_date").value, qty:q, minutes:n($("#r_min").value), ...readResult(m, q), notes:$("#r_notes").value.trim(), usage:[...m.querySelectorAll("[data-use]")].map(i=>({id:i.dataset.use, grams:n(i.value)}))}; };
+    const calc = () => { const r = read(); const mc = r.usage.reduce((a,u)=>a+u.grams*ppg(spool(u.id)),0); const tc = r.minutes/60*runRate(); const ex = n(p.extras)*r.qty; const c = mc+tc+ex;
+      const over = r.usage.find(u=>u.grams > n(spool(u.id)?.remaining));
+      $("#rcalc").innerHTML = `<div>Filament<b>${g(r.usage.reduce((a,u)=>a+u.grams,0))} g</b></div><div>Batch cost<b>${money(c)}</b></div><div>Per unit<b>${money(c/r.qty)}</b></div><div>Stock after<b>${n(p.stock)+r.goodQty}</b></div>${over?`<div class="full alert bad" style="grid-column:1/-1">${esc(spool(over.id).name.trim())} only has ${g(spool(over.id).remaining)} g left.</div>`:""}`; };
+    $("#r_p").onchange = fill; $("#r_qty").oninput = () => { fill(); syncResult(m); }; m.addEventListener("input", e => { if (e.target.id!=="r_qty") calc(); }); m.addEventListener("change", () => { syncResult(m); calc(); });
+    fill(); syncResult(m);
+    m.querySelector("[data-x]").onclick = close;
+    $("#rsave").onclick = () => { try{ const r = read(); logPrint(r); close(); render(); toast(r.goodQty>=r.qty ? "Print logged · stock +"+r.goodQty : r.goodQty>0 ? `Logged · ${r.goodQty} good, ${r.qty-r.goodQty} wasted` : "Failed print logged as waste"); }catch(e){ console.error(e); toast("Couldn't save the print: "+(e.message||e)); } };
+  });
+}
+
+function resultFields(qty, cur){
+  const res = cur ? (cur.goodQty>=cur.qty?"ok":cur.goodQty>0?"part":"fail") : "ok";
+  return `<div class="seg" role="radiogroup" aria-label="Result">
+    <label class="ok"><input type="radio" name="res" value="ok" ${res==="ok"?"checked":""}>Success<small>all units to stock</small></label>
+    <label><input type="radio" name="res" value="part" ${res==="part"?"checked":""}>Partial<small>some units usable</small></label>
+    <label class="ko"><input type="radio" name="res" value="fail" ${res==="fail"?"checked":""}>Failed<small>count as waste</small></label></div>
+    <div class="form" style="margin-top:10px" data-resx>
+      <label class="f" data-partf>Usable units<input id="r_goodq" type="number" min="0" value="${cur?cur.goodQty:Math.max(0,qty-1)}"></label>
+      <label class="f" data-failf>What went wrong?<select id="r_reason">${REASONS.map(x=>`<option ${cur&&cur.failReason===x?"selected":""}>${x}</option>`).join("")}</select></label>
+    </div>`;
+}
+function syncResult(m){
+  const v = m.querySelector('input[name="res"]:checked')?.value || "ok";
+  m.querySelector("[data-partf]").hidden = v !== "part";
+  m.querySelector("[data-failf]").hidden = v === "ok";
+  m.querySelector("[data-resx]").hidden = v === "ok";
+  const q = n(m.querySelector("#r_qty")?.value) || n(m.dataset.qty) || 1, gi = m.querySelector("#r_goodq");
+  gi.max = q; if (n(gi.value) >= q) gi.value = Math.max(0, q-1);
+}
+function readResult(m, q){
+  const v = m.querySelector('input[name="res"]:checked')?.value || "ok";
+  const goodQty = v==="ok" ? q : v==="fail" ? 0 : Math.max(0, Math.min(q, Math.round(n(m.querySelector("#r_goodq").value))));
+  return {goodQty, failReason: goodQty<q ? m.querySelector("#r_reason").value : ""};
+}
+function resultForm(pr){
+  const q = n(pr.qty)||1, cur = {qty:q, goodQty:goodOf(pr), failReason:pr.failReason||""};
+  modal("Change result", `<p class="meta">${esc(product(pr.product)?.name||pr.name)} · ${fmtDate(pr.date)} · ${q} unit${q>1?"s":""}. Stock is adjusted by the difference.</p>${resultFields(q, cur)}<div class="foot"><button class="btn" data-x>Cancel</button><button class="btn primary" id="ressave">Save</button></div>`, m => {
+    m.dataset.qty = q; syncResult(m); m.addEventListener("change", () => syncResult(m));
+    m.querySelector("[data-x]").onclick = close;
+    $("#ressave").onclick = () => { const r = readResult(m, q), p = product(pr.product), diff = r.goodQty - goodOf(pr);
+      if (p){ const b=n(p.stock); p.stock = Math.max(0, b + diff); logMove(p.id, p.stock-b, "Print result changed"); }
+      pr.goodQty = r.goodQty; pr.good = r.goodQty > 0; pr.failReason = r.failReason;
+      persist("prints","products"); close(); render(); toast(diff ? `Result updated · stock ${diff>0?"+":""}${diff}` : "Result updated"); };
+  });
+}
+function spoolForm(s){
+  const isNew = !s; s = s ? {...s} : {id:uid(), name:"PLA MATTE ", color:"#888888", initial:1000, remaining:1000, price:110, min:150};
+  modal(isNew?"Add spool":"Edit spool", `<div class="form">
+    <label class="f full">Name<input id="s_name" value="${esc(s.name)}"></label>
+    <label class="f">Colour<input id="s_color" type="color" value="${hex(s.color)}" style="height:40px;padding:4px"></label>
+    <label class="f">Spool price (${cur()})<input id="s_price" type="number" step="0.01" value="${n(s.price)}"></label>
+    <label class="f">Net weight (g)<input id="s_init" type="number" value="${n(s.initial)}"></label>
+    <label class="f">Remaining (g)<input id="s_rem" type="number" step="0.01" value="${n(s.remaining)}"></label>
+    <label class="f">Alert below (g)<input id="s_min" type="number" value="${n(s.min)}"></label>
+  </div><div class="foot">${isNew?"":`<button class="btn danger" id="sdel" style="margin-right:auto">Delete</button>`}${isNew?"":`<button class="btn" id="sdup">Duplicate</button>`}<button class="btn" data-x>Cancel</button><button class="btn primary" id="ssave">Save</button></div>`, m => {
+    const read = () => Object.assign(s,{name:$("#s_name").value, color:$("#s_color").value, price:n($("#s_price").value), initial:n($("#s_init").value), remaining:n($("#s_rem").value), min:n($("#s_min").value)});
+    m.querySelector("[data-x]").onclick = close;
+    $("#ssave").onclick = () => { read(); if (isNew) S.spools.push(s); else S.spools[S.spools.findIndex(x=>x.id===s.id)] = s; persist("spools"); close(); render(); toast("Spool saved"); };
+    if (!isNew){
+      $("#sdel").onclick = () => { const used = S.products.filter(p=>(p.materials||[]).some(mm=>mm.spoolId===s.id)); close(); if (used.length) confirmBox(`${used.map(p=>p.name).join(", ")} use this spool. Their cost will drop the filament part.`, "Delete anyway", ()=>{ trash("spools", spool(s.id)); render(); }); else { trash("spools", spool(s.id)); render(); } };
+      $("#sdup").onclick = () => { read(); const c = {...s, id:uid(), remaining:n(s.initial)}; S.spools.push(c); persist("spools"); close(); render(); toast("New full spool added"); };
+    }
+  });
+}
+function adjustForm(s){
+  modal("Weigh "+s.name.trim(), `<p class="meta">Put the spool on a scale. Enter the total weight and the empty reel weight, or type the remaining grams directly.</p><div class="form">
+    <label class="f">Scale reading (g)<input id="a_total" type="number" placeholder="e.g. 520"></label>
+    <label class="f">Empty reel (g)<input id="a_reel" type="number" value="${n(s.reel)||250}"></label>
+    <label class="f full">Remaining filament (g)<input id="a_rem" type="number" step="0.01" value="${n(s.remaining)}"></label>
+  </div><div class="foot"><button class="btn" data-x>Cancel</button><button class="btn primary" id="asave">Update</button></div>`, m => {
+    const upd = () => { const t=n($("#a_total").value); if (t) $("#a_rem").value = Math.max(0, t - n($("#a_reel").value)); };
+    $("#a_total").oninput = upd; $("#a_reel").oninput = upd;
+    m.querySelector("[data-x]").onclick = close;
+    $("#asave").onclick = () => { s.remaining = n($("#a_rem").value); s.reel = n($("#a_reel").value); persist("spools"); close(); render(); toast("Remaining weight updated"); };
+  });
+}
+
+function orderForm(o){
+  const isNew = !o; o = o ? JSON.parse(JSON.stringify(o)) : {id:uid(), customer:"", contact:"", channel:S.settings.lastChannel||CHANNELS[0], paid:false, due:"", status:"new", discount:0, shipCharge:0, shipCost:0, notes:"", items:[{product:S.products[0].id, qty:1, price:n(S.products[0].price)}], created:today()};
+  const itemRow = (it,i) => `<div class="mat" data-oi="${i}" style="grid-template-columns:minmax(0,1fr) 70px 90px auto"><select data-op aria-label="Product">${S.products.map(p=>`<option value="${p.id}" ${p.id===it.product?"selected":""}>${esc(p.name)} · ${esc(p.type)}</option>`).join("")}</select><input data-oq type="number" min="1" value="${n(it.qty)}" aria-label="Quantity"><input data-opr type="number" step="0.01" value="${n(it.price)}" aria-label="Unit price"><button class="btn sm ghost" data-odel aria-label="Remove">✕</button></div>`;
+  modal(isNew?"New order":"Edit order", `<div class="form">
+    <label class="f">Customer<input id="o_c" value="${esc(o.customer)}"></label>
+    <label class="f">Phone / handle<input id="o_ct" value="${esc(o.contact)}"></label>
+    <div class="full"><div class="eyebrow" style="margin-bottom:6px">Items · qty · unit price</div><div id="oitems" class="list" style="gap:6px">${o.items.map(itemRow).join("")}</div><button class="btn sm" id="addItem" style="margin-top:6px">Add item</button></div>
+    <label class="f">Sales channel<select id="o_ch">${CHANNELS.map(c=>`<option ${c===o.channel?"selected":""}>${c}</option>`).join("")}</select></label>
+    <label class="f">Due date<input id="o_due" type="date" value="${esc(o.due)}"></label>
+    <label class="f">Discount (${cur()})<input id="o_disc" type="number" step="0.01" value="${n(o.discount)}"></label>
+    <label class="f">Shipping charged to customer<input id="o_shc" type="number" step="0.01" value="${n(o.shipCharge)}"></label>
+    <label class="f">Shipping you pay<input id="o_shp" type="number" step="0.01" value="${n(o.shipCost)}"></label>
+    <label class="f check" style="align-self:end"><input id="o_paid" type="checkbox" ${o.paid?"checked":""}> Paid</label>
+    <label class="f full">Notes<input id="o_n" value="${esc(o.notes)}"></label>
+    <div class="full calc" id="ocalc"></div>
+  </div><div class="foot">${isNew?"":`<button class="btn danger" id="odel" style="margin-right:auto">Delete</button>`}<button class="btn" data-x>Cancel</button><button class="btn primary" id="osave">Save</button></div>`, m => {
+    const read = () => { o.items = [...m.querySelectorAll("[data-oi]")].map(r=>({product:r.querySelector("[data-op]").value, qty:n(r.querySelector("[data-oq]").value)||1, price:n(r.querySelector("[data-opr]").value)})); Object.assign(o,{customer:$("#o_c").value.trim(), contact:$("#o_ct").value.trim(), channel:$("#o_ch").value, due:$("#o_due").value, discount:n($("#o_disc").value), shipCharge:n($("#o_shc").value), shipCost:n($("#o_shp").value), paid:$("#o_paid").checked, notes:$("#o_n").value.trim()}); };
+    const calc = () => { read(); const t=orderTotal(o), nt=orderNet(o); $("#ocalc").innerHTML = `<div>Total<b>${money(t)}</b></div><div>Products cost<b>${money(orderCost(o))}</b></div><div>Fees + packaging<b>${money(orderFees(o)+n(S.settings.packaging))}</b></div><div>Net profit<b style="color:var(--${nt>=0?"good":"bad"})">${money(nt)}</b></div>`; };
+    const wire = () => { m.querySelectorAll("[data-odel]").forEach(b => b.onclick = () => { b.closest("[data-oi]").remove(); calc(); }); m.querySelectorAll("[data-op]").forEach(sel => sel.onchange = () => { sel.closest("[data-oi]").querySelector("[data-opr]").value = n(product(sel.value)?.price); calc(); }); };
+    m.addEventListener("input", calc); wire(); calc();
+    $("#addItem").onclick = () => { $("#oitems").insertAdjacentHTML("beforeend", itemRow({product:S.products[0].id, qty:1, price:n(S.products[0].price)}, Date.now())); wire(); calc(); };
+    m.querySelector("[data-x]").onclick = close;
+    $("#osave").onclick = () => { read(); if (!o.items.length) return; S.settings.lastChannel = o.channel; if (isNew){ o.feePct = n(S.settings.feePct); o.packaging = n(S.settings.packaging); S.orders.unshift(o); } else S.orders[S.orders.findIndex(x=>x.id===o.id)] = o; persist("orders","settings"); close(); render(); toast("Order saved"); };
+    if (!isNew) $("#odel").onclick = () => { close(); const cur0 = S.orders.find(x=>x.id===o.id); if (cur0.status==="delivered") stockMove(cur0, +1); trash("orders", cur0); render(); };
+  });
+}
+function stockMove(o, sign, reason){ (o.items||[]).forEach(i => { const p=product(i.product); if (p){ const b=n(p.stock); p.stock = Math.max(0, b + sign*n(i.qty)); logMove(p.id, p.stock-b, reason || (sign<0?"Sold":"Sale undone"), o.customer||""); } }); }
+function setOrderStatus(id, status){
+  const o = S.orders.find(x=>x.id===id); if (!o) return;
+  const was = o.status === "delivered", now = status === "delivered";
+  if (!was && now) stockMove(o, -1);
+  if (was && !now) stockMove(o, +1);
+  o.status = status; if (now) o.deliveredAt = today();
+  persist("orders","products"); render(); toast(now ? "Delivered · stock updated" : "Status updated");
+}
+
+function noteForm(kind, x){
+  const isNew = !x; x = x ? {...x} : {id:uid(), title:"", body:"", tag:"", date:today()};
+  modal(isNew?(kind==="ideas"?"New idea":"New lesson"):"Edit", `<div class="form">
+    <label class="f full">Title<input id="n_t" value="${esc(x.title)}"></label>
+    <label class="f full">Details<textarea id="n_b">${esc(x.body)}</textarea></label>
+    <label class="f">Tag<input id="n_tag" value="${esc(x.tag)}" placeholder="${kind==="ideas"?"e.g. Ramadan":"e.g. supports"}"></label>
+  </div><div class="foot">${isNew?"":`<button class="btn danger" id="ndel" style="margin-right:auto">Delete</button>`}<button class="btn" data-x>Cancel</button><button class="btn primary" id="nsave">Save</button></div>`, m => {
+    m.querySelector("[data-x]").onclick = close;
+    $("#nsave").onclick = () => { Object.assign(x,{title:$("#n_t").value.trim(), body:$("#n_b").value, tag:$("#n_tag").value.trim()}); if (!x.title) return; if (isNew) S[kind].unshift(x); else S[kind][S[kind].findIndex(y=>y.id===x.id)] = x; persist(kind); close(); render(); };
+    if (!isNew) $("#ndel").onclick = () => { close(); trash(kind, S[kind].find(y=>y.id===x.id)); render(); };
+  });
+}
+
+/* ---------- import / export ---------- */
+function applyBackup(d, label){
+  if (!d || !Array.isArray(d.products) || !Array.isArray(d.spools)) throw new Error("bad");
+  confirmBox(`Replace the data on this phone with ${label}? (${d.products.length} products, ${d.spools.length} spools, ${(d.prints||[]).length} prints)`, "Import", () => {
+    const b = blank(); KEYS.forEach(k => { if (d[k] !== undefined) b[k] = d[k]; });
+    b.settings = Object.assign(blank().settings, d.settings||{});
+    S = b; persist(...KEYS); render(); toast("Backup imported");
+  });
+}
+function importFile(){
+  modal("Import backup", `<p class="meta">Choose a WAV backup file from Files, or paste the backup text you copied from the Claude page (Settings → Export backup → Copy).</p>
+    <div class="row" style="margin-bottom:12px"><button class="btn primary" id="imFile">Choose file</button></div>
+    <label class="f">Or paste backup text<textarea id="imText" placeholder='{"products": …}' style="min-height:140px;font-family:var(--f-mono);font-size:12px"></textarea></label>
+    <div class="foot"><button class="btn" data-x>Cancel</button><button class="btn primary" id="imPaste">Import pasted text</button></div>`, m => {
+    m.querySelector("[data-x]").onclick = close;
+    $("#imFile").onclick = () => { close(); pickFile(); };
+    $("#imPaste").onclick = () => { try{ const d = JSON.parse($("#imText").value); close(); applyBackup(d, "the pasted backup"); }catch(e){ toast("That text isn't a complete WAV backup. Copy all of it and try again."); } };
+  });
+}
+function pickFile(){
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".json,application/json";
+  inp.onchange = async () => {
+    const f = inp.files[0]; if (!f) return;
+    try{
+      applyBackup(JSON.parse(await f.text()), f.name);
+    }catch(e){ toast("That file isn't a WAV backup. Choose the .json file exported from the site."); }
+  };
+  inp.click();
+}
+async function exportFile(){
+  const name = `${(S.settings.workspace||"wav").toLowerCase()}-${today()}.json`;
+  const data = JSON.stringify(S, null, 2);
+  const mark = () => { S.settings.lastBackup = new Date().toISOString(); persist("settings"); render(); };
+  try{
+    const file = new File([data], name, {type:"application/json"});
+    if (navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:name}); mark(); toast("Backup shared"); return; }
+  }catch(e){ if (e && e.name === "AbortError") return; }
+  try{
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([data],{type:"application/json"})); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 4000); mark(); toast("Backup downloaded"); return;
+  }catch(e){}
+  modal("Backup", `<p class="meta">Copy this text and save it as <b>${esc(name)}</b>.</p><textarea id="bk" readonly style="min-height:220px;font-family:var(--f-mono);font-size:12px">${esc(data)}</textarea><div class="foot"><button class="btn" data-x>Close</button><button class="btn primary" id="cp">Copy</button></div>`, m => {
+    m.querySelector("[data-x]").onclick = close;
+    $("#cp").onclick = () => { const t=$("#bk"); navigator.clipboard.writeText(t.value).then(()=>toast("Copied"), ()=>{ t.select(); toast("Selected, press Ctrl+C"); }); };
+  });
+}
+
+/* ---------- bindings ---------- */
+function bind(){
+  const M = $("#main");
+  M.querySelectorAll("[data-go]").forEach(b => b.onclick = () => go(b.dataset.go));
+  M.querySelectorAll("[data-act]").forEach(b => b.onclick = () => ({
+    newProduct:()=>productForm(), newPrint:()=>printForm(), newSpool:()=>spoolForm(), newOrder:()=>S.products.length?orderForm():toast("Add a product first"),
+    import:importFile, export:exportFile,
+    emptyTrash:()=>confirmBox("Permanently delete everything in the trash? This can't be undone.","Empty trash",()=>{ S.trash=[]; persist("trash"); render(); }),
+    saveSettings:()=>{ Object.assign(S.settings,{workspace:$("#s_ws").value.trim()||"WAV", currency:$("#s_cur").value.trim()||"SAR", hour:n($("#s_hour").value), energy:n($("#s_energy").value), feePct:n($("#s_fee").value), packaging:n($("#s_pack").value), targetMargin:n($("#s_tm").value)}); persist("settings"); render(); toast("Settings saved"); }
+  })[b.dataset.act]?.());
+  M.querySelectorAll("[data-editp]").forEach(b => b.onclick = () => productForm(product(b.dataset.editp)));
+  M.querySelectorAll("[data-print]").forEach(b => b.onclick = () => printForm(b.dataset.print, b.dataset.q));
+  M.querySelectorAll("[data-step]").forEach(b => b.onclick = () => { const p = product(b.dataset.step); setStock(p.id, n(p.stock)+n(b.dataset.d), "Manual adjustment"); });
+  M.querySelectorAll("[data-count]").forEach(i => i.onchange = () => setStock(i.dataset.count, i.value, "Count correction"));
+  M.querySelectorAll("[data-adjp]").forEach(b => b.onclick = () => adjustStockForm(product(b.dataset.adjp)));
+  M.querySelectorAll("[data-sell]").forEach(b => b.onclick = () => sellForm(product(b.dataset.sell)));
+  M.querySelectorAll("[data-rp]").forEach(b => b.onclick = () => { filter.rp = b.dataset.rp; render(); });
+  M.querySelectorAll("[data-paid]").forEach(b => b.onclick = () => { const o = S.orders.find(x=>x.id===b.dataset.paid); o.paid = !o.paid; persist("orders"); render(); toast(o.paid?"Marked paid":"Marked unpaid"); });
+  M.querySelectorAll("[data-edits]").forEach(b => b.onclick = () => spoolForm(spool(b.dataset.edits)));
+  M.querySelectorAll("[data-adj]").forEach(b => b.onclick = () => adjustForm(spool(b.dataset.adj)));
+  M.querySelectorAll("[data-edito]").forEach(b => b.onclick = () => orderForm(S.orders.find(o=>o.id===b.dataset.edito)));
+  M.querySelectorAll("[data-ostatus]").forEach(s => s.onchange = () => setOrderStatus(s.dataset.ostatus, s.value));
+  M.querySelectorAll("[data-note]").forEach(b => b.onclick = () => noteForm(b.dataset.note));
+  M.querySelectorAll("[data-editn]").forEach(b => { const [k,id] = b.dataset.editn.split(":"); b.onclick = () => noteForm(k, S[k].find(x=>x.id===id)); });
+  M.querySelectorAll("[data-restore]").forEach(b => b.onclick = () => restore(S.trash.find(t=>t.id===b.dataset.restore)));
+  M.querySelectorAll("[data-prf]").forEach(b => b.onclick = () => { filter.pr = b.dataset.prf; render(); });
+  M.querySelectorAll("[data-of]").forEach(b => b.onclick = () => { filter.o = b.dataset.of; render(); });
+  M.querySelectorAll("[data-res]").forEach(b => b.onclick = () => resultForm(S.prints.find(x=>x.id===b.dataset.res)));
+  M.querySelectorAll("[data-delpr]").forEach(b => b.onclick = () => {
+    const pr = S.prints.find(x=>x.id===b.dataset.delpr);
+    confirmBox("Delete this print? Its filament goes back to the spools and its units come off stock.", "Delete print", () => { undoPrint(pr); trash("prints", pr); persist("spools","products"); render(); });
+  });
+  const pq = $("#pq"); if (pq){ pq.oninput = () => { filter.p = pq.value; const pos = pq.selectionStart; render(); const n2=$("#pq"); n2.focus(); n2.setSelectionRange(pos,pos); }; }
+}
+
+$("#fab").onclick = () => modal("Quick add", `<div class="sheet">
+  <button data-q="print">Log a print<small>deducts filament</small></button>
+  <button data-q="sell">Quick sale<small>takes from stock</small></button>
+  <button data-q="order">New order<small>for later delivery</small></button>
+  <button data-q="product">New product<small>with cost recipe</small></button>
+  <button data-q="spool">New spool<small>filament</small></button>
+  <button data-q="idea">New idea<small>note it down</small></button></div>`, m => m.querySelectorAll("[data-q]").forEach(b => b.onclick = () => { close(); ({
+    print:()=>printForm(), order:()=>S.products.length?orderForm():toast("Add a product first"), product:()=>productForm(), spool:()=>spoolForm(), idea:()=>noteForm("ideas"),
+    sell:()=>{ const ps = S.products.filter(p=>n(p.stock)>0); if (!ps.length) return toast("Nothing in stock to sell"); modal("Sell which product?", `<div class="sheet">${ps.map(p=>`<button data-sp="${p.id}">${esc(p.name)}<small>${esc(p.type)} · ${n(p.stock)} in stock</small></button>`).join("")}</div>`, mm => mm.querySelectorAll("[data-sp]").forEach(x => x.onclick = () => { close(); sellForm(product(x.dataset.sp)); })); }
+  })[b.dataset.q](); }));
+const h = (location.hash||"").slice(1); if (VIEWS.some(v=>v[0]===h)) view = h;
+window.addEventListener("hashchange", () => { const v = location.hash.slice(1); if (VIEWS.some(x=>x[0]===v) && v!==view){ view=v; render(); } });
+boot();
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(()=>{}));
+})();
+</script>
+
+</body>
+</html>
