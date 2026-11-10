@@ -175,7 +175,7 @@ textarea{min-height:80px;resize:vertical}
   .calc{grid-template-columns:repeat(2,minmax(0,1fr))}
   .kv{font-size:20px}
 }
-.mobile-only,.fab{display:none}
+.mobile-only,.fab,.nav button.mobile-only{display:none}
 .sheet{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .sheet button{all:unset;cursor:pointer;padding:16px 14px;border:1px solid var(--line);border-radius:12px;font-weight:600;display:flex;flex-direction:column;gap:2px}
 .sheet button small{font-weight:400;color:var(--muted);font-size:12px}
@@ -183,7 +183,7 @@ textarea{min-height:80px;resize:vertical}
 @media (max-width:720px){
   input,select,textarea{font-size:16px}
   .nav .sec{display:none}
-  .mobile-only{display:flex}
+  .mobile-only,.nav button.mobile-only{display:flex}
   .nav{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));overflow:visible}
   .nav button{flex-direction:column;justify-content:center;gap:3px;padding:6px 2px;font-size:11px;border-radius:10px;text-align:center}
   .nav button svg{width:22px;height:22px}
@@ -264,7 +264,7 @@ function saveLocal(){ try{ localStorage.setItem(LS, JSON.stringify(S)); }catch(e
 function loadLocal(){ try{ const t = localStorage.getItem(LS); if (t) S = Object.assign(blank(), JSON.parse(t)); }catch(e){} }
 const pending = new Map();
 async function persist(...keys){
-  saveLocal();
+  saveLocal(); schedulePush();
   if (mode !== "db") return;
   for (const k of keys){
     if (pending.get(k)) { pending.set(k, "again"); continue; }
@@ -282,10 +282,137 @@ async function persist(...keys){
 }
 function setSync(kind, text){ $("#syncDot").className = "dot "+(kind||""); $("#syncText").textContent = text; }
 
+/* ---------- GitHub sync ---------- */
+const SK = "wav-sync";
+let SY = {}; try{ SY = JSON.parse(localStorage.getItem(SK)||"{}")||{}; }catch(e){ SY = {}; }
+function saveSY(){ try{ localStorage.setItem(SK, JSON.stringify(SY)); }catch(e){} }
+const syncOn = () => !!(SY.token && SY.owner && SY.repo);
+let syncing = false, syncAgain = false, pushT = null, changeSeq = 0;
+function b64e(str){ const b = new TextEncoder().encode(str); let bin = ""; for (let i=0;i<b.length;i+=0x8000) bin += String.fromCharCode.apply(null, b.subarray(i,i+0x8000)); return btoa(bin); }
+function b64d(s64){ const bin = atob(String(s64).replace(/\s/g,"")); const u = new Uint8Array(bin.length); for (let i=0;i<bin.length;i++) u[i] = bin.charCodeAt(i); return new TextDecoder().decode(u); }
+function normalize(d){ const b = Object.assign(blank(), d||{}); b.settings = Object.assign(blank().settings, (d&&d.settings)||{}); KEYS.forEach(k => { if (k!=="settings" && !Array.isArray(b[k])) b[k] = []; }); return b; }
+async function ghFetch(path, opts={}){
+  let r;
+  try{ r = await fetch(`https://api.github.com/repos/${encodeURIComponent(SY.owner)}/${encodeURIComponent(SY.repo)}${path}`, {cache:"no-store", ...opts, headers:{Authorization:"Bearer "+SY.token, Accept:"application/vnd.github+json", "X-GitHub-Api-Version":"2022-11-28", ...(opts.body?{"Content-Type":"application/json"}:{})}}); }
+  catch(e){ const er = new Error("Offline. Changes are saved and will sync when you're back online."); er.offline = true; throw er; }
+  return r;
+}
+function ghError(r){
+  if (r.status === 401) return new Error("GitHub token is invalid or expired. Create a new one and paste it in Settings.");
+  if (r.status === 403) return new Error("The token can't write to this repository. Give it Contents: Read and write.");
+  if (r.status === 404) return new Error(`Repository ${SY.owner}/${SY.repo} not found, or the token can't see it.`);
+  return new Error("GitHub error "+r.status+". Try again in a minute.");
+}
+async function pullRemote(){
+  const r = await ghFetch("/contents/data.json?t="+Date.now());
+  if (r.status === 404){ const rr = await ghFetch(""); if (!rr.ok) throw ghError(rr); return {missing:true}; }
+  if (!r.ok) throw ghError(r);
+  const j = await r.json();
+  let text;
+  if (j.content) text = b64d(j.content);
+  else text = await (await fetch(j.download_url, {cache:"no-store"})).text();
+  return {sha:j.sha, data:JSON.parse(text)};
+}
+async function pushRemote(){
+  const body = {message:"WAV sync "+new Date().toISOString(), content:b64e(JSON.stringify(S))};
+  if (SY.sha) body.sha = SY.sha;
+  const r = await ghFetch("/contents/data.json", {method:"PUT", body:JSON.stringify(body)});
+  if (r.status === 409 || r.status === 422) return {conflict:true};
+  if (!r.ok) throw ghError(r);
+  const j = await r.json(); SY.sha = j.content.sha; return {ok:true};
+}
+function mergeState(Lc, Rc){
+  const L = normalize(Lc), Rm = normalize(Rc), out = normalize({});
+  const tmap = new Map(); [...Rm.trash, ...L.trash].forEach(t => tmap.set(t.id, t));
+  const deadAt = {}; tmap.forEach(t => { const id = t.record && t.record.id; if (id) deadAt[id] = Math.max(deadAt[id]||0, Date.parse(t.deletedAt)||0); });
+  const alive = x => x && (!(x.id in deadAt) || (Date.parse(x._restoredAt)||0) > deadAt[x.id]);
+  ["products","spools","prints","orders","moves","ideas","lessons"].forEach(k => {
+    const m = new Map(); Rm[k].forEach(x => m.set(x.id, x)); L[k].forEach(x => m.set(x.id, x));
+    const seen = new Set(), list = [];
+    L[k].forEach(x => { if (!seen.has(x.id)){ seen.add(x.id); list.push(m.get(x.id)); } });
+    Rm[k].forEach(x => { if (!seen.has(x.id)){ seen.add(x.id); list.push(m.get(x.id)); } });
+    out[k] = list.filter(alive);
+  });
+  const by = f => (a,b) => String(b[f]||"").localeCompare(String(a[f]||""));
+  out.prints.sort(by("date")); out.orders.sort(by("created")); out.moves.sort(by("at")); out.moves = out.moves.slice(0,500);
+  out.trash = [...tmap.values()].filter(t => { const id = t.record && t.record.id; return !(out[t.kind]||[]).some(x => x.id === id); }).sort(by("deletedAt")).slice(0,60);
+  out.settings = Object.assign({}, Rm.settings, L.settings);
+  const lbs = [L.settings.lastBackup, Rm.settings.lastBackup].filter(Boolean).sort(); if (lbs.length) out.settings.lastBackup = lbs.pop();
+  return out;
+}
+let applyingRemote = false;
+function takeRemote(d){ applyingRemote = true; S = normalize(d); saveLocal(); applyingRemote = false; render(); }
+function schedulePush(){
+  if (applyingRemote || !syncOn()) return;
+  changeSeq++; SY.dirty = true; saveSY();
+  clearTimeout(pushT); pushT = setTimeout(() => syncNow(), 1500);
+}
+function syncLabel(){
+  if (!syncOn()) return "Saved on this device";
+  if (SY.error) return SY.offline ? "Offline · will sync" : "Sync problem";
+  if (SY.dirty) return "Syncing…";
+  return SY.lastSync ? "Synced" : "Connecting…";
+}
+function showSync(){ const k = !syncOn() ? "" : SY.error ? "warn" : "ok"; setSync(k, syncLabel()); document.querySelectorAll("[data-sync]").forEach(el => { el.textContent = syncLabel(); el.dataset.state = k; }); }
+async function syncNow(manual){
+  if (!syncOn()) return;
+  if (syncing){ syncAgain = true; return; }
+  syncing = true; clearTimeout(pushT);
+  try{
+    for (let attempt = 0; attempt < 4; attempt++){
+      if (SY.dirty){
+        if (!SY.sha){ const rm = await pullRemote(); if (!rm.missing){ SY.sha = rm.sha; takeRemote(mergeState(S, rm.data)); } }
+        const seq = changeSeq, res = await pushRemote();
+        if (res.conflict){ const rm = await pullRemote(); SY.sha = rm.missing ? null : rm.sha; if (!rm.missing) takeRemote(mergeState(S, rm.data)); continue; }
+        if (seq === changeSeq) SY.dirty = false;
+      } else {
+        const rm = await pullRemote();
+        if (rm.missing){ SY.sha = null; SY.dirty = true; continue; }
+        if (rm.sha !== SY.sha){ SY.sha = rm.sha; takeRemote(rm.data); }
+      }
+      break;
+    }
+    SY.lastSync = new Date().toISOString(); SY.error = ""; SY.offline = false; saveSY();
+    if (manual) toast("Synced");
+  }catch(e){
+    SY.error = e.message; SY.offline = !!e.offline; saveSY();
+    if (manual || !e.offline) toast(e.message);
+  }finally{
+    syncing = false; showSync();
+    if (view === "settings") render();
+    if (syncAgain || SY.dirty && !SY.error){ syncAgain = false; clearTimeout(pushT); pushT = setTimeout(() => syncNow(), 1200); }
+  }
+}
+async function connectSync(owner, repo, token){
+  SY = {owner:owner.trim(), repo:repo.trim(), token:token.trim()};
+  showSync();
+  try{
+    const rr = await ghFetch(""); if (!rr.ok) throw ghError(rr);
+    const info = await rr.json(); if (!info.private){ throw new Error(`${SY.owner}/${SY.repo} is public. Make it private first so nobody can see your data.`); }
+    const rm = await pullRemote();
+    saveSY();
+    if (rm.missing){ SY.dirty = true; saveSY(); toast("Connected. Uploading this device's data…"); syncNow(); return; }
+    const localHas = S.products.length || S.prints.length || S.orders.length;
+    if (!localHas){ SY.sha = rm.sha; SY.dirty = false; saveSY(); takeRemote(rm.data); SY.lastSync = new Date().toISOString(); saveSY(); showSync(); toast("Connected. Cloud data loaded."); return; }
+    const rd = normalize(rm.data);
+    modal("Data found in the cloud", `<p>The cloud has ${rd.products.length} products, ${rd.prints.length} prints and ${rd.orders.length} orders. This device has ${S.products.length} products, ${S.prints.length} prints and ${S.orders.length} orders.</p>
+      <div class="sheet" style="grid-template-columns:minmax(0,1fr)">
+        <button data-c="cloud">Use the cloud data<small>Replaces what's on this device. Best for a new phone or computer.</small></button>
+        <button data-c="merge">Merge both<small>Keeps everything from both. Edits on this device win if the same item changed.</small></button></div>`, m => {
+      m.querySelector('[data-c="cloud"]').onclick = () => { close(); SY.sha = rm.sha; SY.dirty = false; SY.lastSync = new Date().toISOString(); saveSY(); takeRemote(rm.data); showSync(); toast("Cloud data loaded"); };
+      m.querySelector('[data-c="merge"]').onclick = () => { close(); SY.sha = rm.sha; takeRemote(mergeState(S, rm.data)); SY.dirty = true; saveSY(); syncNow(true); };
+    });
+  }catch(e){ SY = {}; saveSY(); showSync(); toast(e.message); render(); }
+}
+function disconnectSync(){ SY = {}; saveSY(); showSync(); render(); toast("Sync turned off on this device. Your data stays here."); }
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") syncNow(); });
+window.addEventListener("online", () => syncNow());
+setInterval(() => { if (document.visibilityState === "visible" && !SY.dirty) syncNow(); }, 60000);
+
 async function boot(){
   loadLocal(); render();
   try{ if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){}
-  if (!window.claude || !window.claude.use){ setSync("ok","Saved on this phone"); return; }
+  if (!window.claude || !window.claude.use){ showSync(); if (syncOn()) syncNow(); return; }
   try{ db = await window.claude.use("db"); }catch(e){ db = null; }
   if (!db){ setSync("warn","Saved on this device"); return; }
   mode = "db";
@@ -361,6 +488,7 @@ function trash(kind, rec){
 }
 function restore(t){
   if (!t) return;
+  t.record._restoredAt = new Date().toISOString();
   S[t.kind] = [t.record, ...(S[t.kind]||[])];
   if (t.kind === "prints"){ const pr = t.record; deductSpools(pr.usage||[], -1); const p = product(pr.product); if (p){ p.stock = n(p.stock) + goodOf(pr); logMove(p.id, goodOf(pr), "Print restored"); } persist("spools","products"); }
   S.trash = S.trash.filter(x => x.id !== t.id);
@@ -435,7 +563,7 @@ function render(){
 }
 
 const MLOGO = `<svg class="logo mlogo" style="display:none" viewBox="150 540 960 240" width="84" aria-hidden="true"><path d="M190 578 L285 745 L375 588 L465 745 L560 578"/><path d="M600 745 L712 586 L822 745"/><path d="M852 578 L963 745 L1074 578"/></svg>`;
-function head(title, sub, actions=""){ return `${MLOGO}<div class="head"><div><div class="eyebrow">${esc(S.settings.workspace||"WAV")}</div><h1>${title}</h1>${sub?`<p class="sub">${sub}</p>`:""}</div><div class="row">${actions}</div></div>`; }
+function head(title, sub, actions=""){ return `${MLOGO}<div class="head"><div><div class="eyebrow">${esc(S.settings.workspace||"WAV")} · <span data-sync>${syncLabel()}</span></div><h1>${title}</h1>${sub?`<p class="sub">${sub}</p>`:""}</div><div class="row">${actions}</div></div>`; }
 
 function vHome(){
   if (!S.products.length && !S.spools.length) return head("Overview") + `<div class="empty"><p>No data yet. Import your backup file from the old site, or start by adding filament and products.</p><div class="row" style="justify-content:center"><button class="btn primary" data-act="import">Import backup (.json)</button><button class="btn" data-go="spools">Add filament</button></div></div>`;
@@ -450,7 +578,8 @@ function vHome(){
 
   const alerts = [];
   S.spools.forEach(s => { const st = spoolState(s); if (st!=="good") alerts.push([st, `${s.name.trim()} has ${g(s.remaining)} g left (alert at ${g(s.min)} g)`]); });
-  const lb = S.settings.lastBackup; if (S.products.length && (!lb || (Date.now()-new Date(lb))/864e5 > 7)) alerts.unshift(["warn", lb ? `Last backup was ${fmtDate(lb.slice(0,10))}. Your data lives on this phone only; export a backup to Files or iCloud.` : "Your data lives on this phone only. Export a backup to Files or iCloud from Settings."]);
+  const lb = S.settings.lastBackup; if (SY.error && !SY.offline) alerts.unshift(["bad", "Sync problem: "+SY.error]);
+  if (!syncOn() && S.products.length && (!lb || (Date.now()-new Date(lb))/864e5 > 7)) alerts.unshift(["warn", lb ? `Last backup was ${fmtDate(lb.slice(0,10))}. Your data lives on this phone only; export a backup to Files or iCloud.` : "Your data lives on this device only. Turn on cloud sync in Settings, or export a backup."]);
   const plan = restockPlan(); if (plan.length) alerts.push(["warn", `${plan.length} product${plan.length>1?"s":""} below minimum. Restock plan: ${plan.reduce((a,x)=>a+x.need,0)} units, about ${hrs(plan.reduce((a,x)=>a+x.minutes,0))} of printing.`]);
   S.orders.filter(o=>OPEN.includes(o.status) && o.due && o.due < today()).forEach(o => alerts.push(["bad", `Order for ${o.customer||"a customer"} was due ${fmtDate(o.due)}`]));
   S.orders.filter(o=>o.status==="delivered" && !o.paid).forEach(o => alerts.push(["warn", `${o.customer||"A customer"} hasn't paid ${money(orderTotal(o))} ${cur()} (delivered)`]));
@@ -645,6 +774,25 @@ function vNotes(){
   return head("Ideas & lessons") + `<div class="list" style="gap:28px">${col("ideas","Product ideas","Capture designs you want to try next.")}${col("lessons","Lessons learned","Note what worked: settings, supports, failures to avoid.")}</div>`;
 }
 
+function ago(iso){ if (!iso) return "never"; const m = Math.round((Date.now()-new Date(iso))/60000); return m < 1 ? "just now" : m < 60 ? m+" min ago" : m < 1440 ? Math.round(m/60)+" h ago" : fmtDate(iso.slice(0,10)); }
+function syncPanel(){
+  if (syncOn()) return `<div class="list" style="gap:10px">
+    <div class="row" style="justify-content:space-between"><span><span class="pill ${SY.error?(SY.offline?"warn":"bad"):"good"}">${esc(syncLabel())}</span></span><span class="meta">last sync ${ago(SY.lastSync)}</span></div>
+    <p class="meta" style="margin:0">Connected to <b>${esc(SY.owner)}/${esc(SY.repo)}</b>. Changes upload a moment after you make them, and the latest data loads whenever you open the app.</p>
+    ${SY.error?`<div class="alert ${SY.offline?"warn":"bad"}">${esc(SY.error)}</div>`:""}
+    <div class="row"><button class="btn primary" data-act="syncNow">Sync now</button><button class="btn ghost danger" data-act="syncOff">Turn off on this device</button></div></div>`;
+  return `<p class="meta">Keep your phone, computer and any other device in step. Your data is saved to a private repository in your GitHub account. Set it up once, then connect each device with the same token.</p>
+  <ol class="meta" style="padding-left:18px;margin:8px 0 14px;display:flex;flex-direction:column;gap:4px">
+    <li>Create a <b>private</b> repository named <b>wav-data</b>: <span class="mono">github.com/new</span></li>
+    <li>Create a token at <span class="mono">github.com/settings/personal-access-tokens/new</span>: Repository access → Only select → <b>wav-data</b>; Permissions → <b>Contents: Read and write</b>; expiry up to 1 year.</li>
+    <li>Paste it below and tap Connect. Do the same on each device.</li></ol>
+  <div class="form">
+    <label class="f">GitHub account<input id="sy_owner" value="${esc(SY.owner||"WAV-SA")}" autocapitalize="off" autocorrect="off"></label>
+    <label class="f">Repository<input id="sy_repo" value="${esc(SY.repo||"wav-data")}" autocapitalize="off" autocorrect="off"></label>
+    <label class="f full">Token<input id="sy_token" type="password" autocomplete="off" autocapitalize="off" placeholder="github_pat_…"></label>
+  </div><div class="foot"><button class="btn primary" data-act="syncConnect">Connect</button></div>
+  <p class="meta">The token stays on this device and only opens the wav-data repository.</p>`;
+}
 function vSettings(){
   const s = S.settings;
   return head("Settings") + `<div class="grid2"><section class="panel"><h2>Costing</h2>
@@ -660,7 +808,8 @@ function vSettings(){
     <p class="meta full">The fee is the cut your store platform or payment gateway takes from each order. Suggested prices aim for the target margin after this fee.</p>
     <p class="meta full">Each print hour costs <b class="num">${money(runRate())} ${cur()}</b>. Unit cost = filament grams × price per gram + hours × ${money(runRate())} + extras (magnets, NFC chips…).</p>
   </div><div class="foot"><button class="btn primary" data-act="saveSettings">Save settings</button></div></section>
-  <section class="panel"><h2>Backup</h2><p class="meta">Your data is stored on this phone. Export a backup regularly and save it to Files or iCloud Drive. ${S.settings.lastBackup?`Last backup: ${fmtDate(S.settings.lastBackup.slice(0,10))}.`:"No backup yet."}</p>
+  <section class="panel"><h2>Cloud sync</h2>${syncPanel()}
+  <h2 style="margin-top:24px">Backup</h2><p class="meta">${syncOn()?"Your data syncs to GitHub. A backup file is still a good extra copy.":"Your data is stored on this device. Export a backup regularly and save it to Files or iCloud Drive."} ${S.settings.lastBackup?`Last backup: ${fmtDate(S.settings.lastBackup.slice(0,10))}.`:"No backup yet."}</p>
   <div class="row"><button class="btn primary" data-act="export">Export backup</button><button class="btn" data-act="import">Import backup</button></div>
   <h2 style="margin-top:24px">Trash</h2>${S.trash.length?`<div class="list" style="gap:0">${S.trash.map(t=>`<div class="item"><div><div class="name">${esc(t.record.name||t.record.title||t.record.customer||"Item")}</div><div class="meta">${esc(t.kind)} · ${t.deletedAt?new Date(t.deletedAt).toLocaleDateString("en-GB"):""}</div></div><button class="btn sm" data-restore="${t.id}">Restore</button></div>`).join("")}</div><button class="btn sm ghost danger" data-act="emptyTrash" style="margin-top:8px">Empty trash</button>`:`<p class="meta">Trash is empty.</p>`}
   </section></div>`;
@@ -892,6 +1041,8 @@ function bind(){
   M.querySelectorAll("[data-act]").forEach(b => b.onclick = () => ({
     newProduct:()=>productForm(), newPrint:()=>printForm(), newSpool:()=>spoolForm(), newOrder:()=>S.products.length?orderForm():toast("Add a product first"),
     import:importFile, export:exportFile,
+    syncNow:()=>syncNow(true), syncOff:()=>confirmBox("Turn off sync on this device? Your data stays here, and other devices keep syncing.","Turn off",disconnectSync),
+    syncConnect:()=>{ const o=$("#sy_owner").value, r=$("#sy_repo").value, t=$("#sy_token").value; if (!o.trim()||!r.trim()||!t.trim()) return toast("Fill in account, repository and token"); toast("Connecting…"); connectSync(o, r, t); },
     emptyTrash:()=>confirmBox("Permanently delete everything in the trash? This can't be undone.","Empty trash",()=>{ S.trash=[]; persist("trash"); render(); }),
     saveSettings:()=>{ Object.assign(S.settings,{workspace:$("#s_ws").value.trim()||"WAV", currency:$("#s_cur").value.trim()||"SAR", hour:n($("#s_hour").value), energy:n($("#s_energy").value), feePct:n($("#s_fee").value), packaging:n($("#s_pack").value), targetMargin:n($("#s_tm").value)}); persist("settings"); render(); toast("Settings saved"); }
   })[b.dataset.act]?.());
