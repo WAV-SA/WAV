@@ -387,6 +387,52 @@ async function syncNow(manual){
     if (syncAgain || SY.dirty && !SY.error){ syncAgain = false; clearTimeout(pushT); pushT = setTimeout(() => syncNow(), 1200); }
   }
 }
+const APP_URL = location.origin + location.pathname;
+const isStandalone = () => (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+function b64url(str){ return b64e(str).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
+function unb64url(x){ x = x.replace(/-/g,"+").replace(/_/g,"/"); while (x.length % 4) x += "="; return b64d(x); }
+function makeInvite(token){ return APP_URL + "#invite=" + b64url(JSON.stringify({o:SY.owner, r:SY.repo, t:token.trim(), v:1})); }
+function parseInvite(text){
+  const m = String(text||"").match(/invite=([A-Za-z0-9_-]+)/); if (!m) return null;
+  try{ const j = JSON.parse(unb64url(m[1])); return (j.o && j.r && j.t) ? j : null; }catch(e){ return null; }
+}
+function useInvite(text){
+  const inv = parseInvite(text);
+  if (!inv) return toast("That isn't a WAV invite link. Copy the whole link and try again.");
+  try{ localStorage.setItem("wav-invite", String(text).trim()); }catch(e){}
+  toast("Connecting…"); connectSync(inv.o, inv.r, inv.t, true);
+}
+function inviteBox(){ return `<div class="form" style="margin-top:8px"><label class="f full">Have an invite link? Paste it here<input id="inv_text" placeholder="https://wav-sa.github.io/WAV/#invite=…" autocapitalize="off" autocorrect="off"></label></div><div class="foot" style="margin-top:8px"><button class="btn primary" data-act="useInvite">Open shared data</button></div>`; }
+function installTip(){
+  if (isStandalone()) return "";
+  let link = ""; try{ link = localStorage.getItem("wav-invite") || ""; }catch(e){}
+  return `<div class="alert warn" style="flex-direction:column;align-items:stretch;gap:8px"><b>Want it as an app on iPhone?</b><span>In Safari tap Share ⬆️ → Add to Home Screen. Open the new WAV icon, then paste your invite link once.</span>${link?`<button class="btn sm" data-act="copyInvite" style="align-self:flex-start">Copy my invite link</button>`:""}</div>`;
+}
+function copyText(t, ok){ navigator.clipboard.writeText(t).then(() => toast(ok||"Copied"), () => { modal("Copy this", `<textarea id="cpy" readonly style="min-height:120px;font-family:var(--f-mono);font-size:12px">${esc(t)}</textarea><div class="foot"><button class="btn" data-x>Close</button></div>`, m => { m.querySelector("[data-x]").onclick = close; const x = $("#cpy"); x.focus(); x.select(); }); }); }
+function shareInviteForm(){
+  modal("Share view-only", `<p class="meta">The person can see everything (stock, orders, costs, profit and customers) but can't change anything.</p>
+    <ol class="meta" style="padding-left:18px;display:flex;flex-direction:column;gap:4px;margin:0 0 12px">
+      <li>Create a read-only token at <span class="mono">github.com/settings/personal-access-tokens/new</span>: name <b>WAV viewer</b>, repository <b>${esc(SY.repo)}</b>, Contents → <b>Read-only</b>.</li>
+      <li>Paste it below to make the link.</li></ol>
+    <label class="f">Read-only token<input id="vw_token" type="password" autocomplete="off" autocapitalize="off" placeholder="github_pat_…"></label>
+    <div id="vw_out" style="margin-top:12px"></div>
+    <div class="foot"><button class="btn" data-x>Close</button><button class="btn primary" id="vw_make">Create link</button></div>`, m => {
+    m.querySelector("[data-x]").onclick = close;
+    $("#vw_make").onclick = async () => {
+      const t = $("#vw_token").value.trim(); if (!t) return toast("Paste the read-only token first");
+      if (t === SY.token) return toast("That's your own token, which can edit. Make a separate read-only one.");
+      // check the token can open the repository
+      const saved = {...SY}; SY.token = t; let canRead = false;
+      try{ const r = await ghFetch(""); canRead = r.ok; }catch(e){}
+      SY = saved;
+      if (!canRead) return toast("That token can't open "+SY.repo+". Check it has access to that repository.");
+      const link = makeInvite(t);
+      $("#vw_out").innerHTML = `<label class="f">Invite link<textarea id="vw_link" readonly style="min-height:90px;font-family:var(--f-mono);font-size:12px">${esc(link)}</textarea></label><div class="row" style="margin-top:8px"><button class="btn primary" id="vw_share">Send…</button><button class="btn" id="vw_copy">Copy link</button></div><p class="meta">To stop access later, delete the WAV viewer token on GitHub.</p>`;
+      $("#vw_copy").onclick = () => copyText(link, "Link copied");
+      $("#vw_share").onclick = async () => { try{ if (navigator.share){ await navigator.share({title:"WAV Print Studio", text:"View WAV stock and orders:", url:link}); return; } }catch(e){ if (e && e.name === "AbortError") return; } copyText(link, "Link copied"); };
+    };
+  });
+}
 async function connectSync(owner, repo, token, readonly){
   SY = {owner:owner.trim(), repo:repo.trim(), token:token.trim(), readonly:!!readonly};
   showSync();
@@ -571,7 +617,7 @@ const MLOGO = `<svg class="logo mlogo" style="display:none" viewBox="150 540 960
 function head(title, sub, actions=""){ return `${MLOGO}<div class="head"><div><div class="eyebrow">${esc(S.settings.workspace||"WAV")} · <span data-sync>${syncLabel()}</span></div><h1>${title}</h1>${sub?`<p class="sub">${sub}</p>`:""}</div><div class="row">${actions}</div></div>`; }
 
 function vHome(){
-  if (!S.products.length && !S.spools.length) return head("Overview") + `<div class="empty"><p>No data yet. Import your backup file from the old site, or start by adding filament and products.</p><div class="row" style="justify-content:center"><button class="btn primary" data-act="import">Import backup (.json)</button><button class="btn" data-go="spools">Add filament</button></div></div>`;
+  if (!S.products.length && !S.spools.length) return head("Overview") + `<div class="panel" style="margin-bottom:16px"><h2>Someone shared WAV with you?</h2>${inviteBox()}</div><div class="empty"><p>No data yet. Import your backup file from the old site, or start by adding filament and products.</p><div class="row" style="justify-content:center"><button class="btn primary" data-act="import">Import backup (.json)</button><button class="btn" data-go="spools">Add filament</button></div></div>`;
   const stockValue = S.products.reduce((a,p)=>a+n(p.stock)*n(p.price),0);
   const stockCost = S.products.reduce((a,p)=>a+n(p.stock)*(n(p.avgCost)||unitCost(p)),0);
   const filament = S.spools.reduce((a,s)=>a+n(s.remaining),0);
@@ -600,7 +646,7 @@ function vHome(){
   </div>
   <div class="grid2">
     <div class="list" style="gap:20px">
-      <section class="panel"><div class="row" style="justify-content:space-between"><h2>Needs attention</h2>${plan.length?`<button class="btn sm ghost" data-go="stock">Restock plan →</button>`:""}</div>${alerts.length ? `<div class="list">${alerts.map(([k,t])=>`<div class="alert ${k==="bad"?"bad":"warn"}"><span>${esc(t)}</span></div>`).join("")}</div>` : `<p class="meta">Everything is above its minimum.</p>`}</section>
+      ${syncOn() && SY.readonly ? installTip() : ""}<section class="panel"><div class="row" style="justify-content:space-between"><h2>Needs attention</h2>${plan.length?`<button class="btn sm ghost" data-go="stock">Restock plan →</button>`:""}</div>${alerts.length ? `<div class="list">${alerts.map(([k,t])=>`<div class="alert ${k==="bad"?"bad":"warn"}"><span>${esc(t)}</span></div>`).join("")}</div>` : `<p class="meta">Everything is above its minimum.</p>`}</section>
       <section class="panel"><h2>Margin per unit</h2>
         <div class="tablewrap" style="border:0"><table><thead><tr><th>Product</th><th class="r">Cost</th><th class="r">Price</th><th class="r">Profit</th><th class="r">Can make</th></tr></thead><tbody>
         ${top.map(({p,c})=>{ const pr=n(p.price)-c, pct=n(p.price)?pr/n(p.price)*100:0, can=canMake(p); return `<tr><td><div class="name">${esc(p.name)}</div><div class="meta">${esc(p.type)}</div></td><td class="r num">${money(c)}</td><td class="r num">${money(p.price)}</td><td class="r num">${money(pr)} <span class="pill ${pct>=50?"good":pct>=25?"warn":"bad"}">${Math.round(pct)}%</span></td><td class="r num">${can===Infinity?"—":can}</td></tr>`; }).join("")}
@@ -785,8 +831,10 @@ function syncPanel(){
     <div class="row" style="justify-content:space-between"><span><span class="pill ${SY.error?(SY.offline?"warn":"bad"):"good"}">${esc(syncLabel())}</span></span><span class="meta">last sync ${ago(SY.lastSync)}</span></div>
     <p class="meta" style="margin:0">Connected to <b>${esc(SY.owner)}/${esc(SY.repo)}</b>${SY.readonly?" in <b>view-only</b> mode. This device shows the latest data and can't change anything.":". Changes upload a moment after you make them, and the latest data loads whenever you open the app."}</p>
     ${SY.error?`<div class="alert ${SY.offline?"warn":"bad"}">${esc(SY.error)}</div>`:""}
-    <div class="row"><button class="btn primary" data-act="syncNow">Sync now</button><button class="btn ghost danger" data-act="syncOff">Turn off on this device</button></div></div>`;
-  return `<p class="meta">Keep your phone, computer and any other device in step. Your data is saved to a private repository in your GitHub account. Set it up once, then connect each device with the same token.</p>
+    <div class="row"><button class="btn primary" data-act="syncNow">Sync now</button>${SY.readonly?"":`<button class="btn" data-act="shareView">Share view-only link</button>`}<button class="btn ghost danger" data-act="syncOff">Turn off on this device</button></div>
+    ${SY.readonly?installTip():""}</div>`;
+  return `${inviteBox()}<hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
+  <p class="meta">Keep your phone, computer and any other device in step. Your data is saved to a private repository in your GitHub account. Set it up once, then connect each device with the same token.</p>
   <ol class="meta" style="padding-left:18px;margin:8px 0 14px;display:flex;flex-direction:column;gap:4px">
     <li>Create a <b>private</b> repository named <b>wav-data</b>: <span class="mono">github.com/new</span></li>
     <li>Create a token at <span class="mono">github.com/settings/personal-access-tokens/new</span>: Repository access → Only select → <b>wav-data</b>; Permissions → <b>Contents: Read and write</b>; expiry up to 1 year.</li>
@@ -1047,7 +1095,9 @@ function bind(){
   M.querySelectorAll("[data-act]").forEach(b => b.onclick = () => ({
     newProduct:()=>productForm(), newPrint:()=>printForm(), newSpool:()=>spoolForm(), newOrder:()=>S.products.length?orderForm():toast("Add a product first"),
     import:importFile, export:exportFile,
-    syncNow:()=>syncNow(true), syncOff:()=>confirmBox("Turn off sync on this device? Your data stays here, and other devices keep syncing.","Turn off",disconnectSync),
+    syncNow:()=>syncNow(true), shareView:shareInviteForm,
+    useInvite:()=>useInvite($("#inv_text").value),
+    copyInvite:()=>{ let l=""; try{ l=localStorage.getItem("wav-invite")||""; }catch(e){} if (l) copyText(l, "Invite link copied. Paste it in the app after adding it to your Home Screen."); }, syncOff:()=>confirmBox("Turn off sync on this device? Your data stays here, and other devices keep syncing.","Turn off",disconnectSync),
     syncConnect:()=>{ const o=$("#sy_owner").value, r=$("#sy_repo").value, t=$("#sy_token").value; if (!o.trim()||!r.trim()||!t.trim()) return toast("Fill in account, repository and token"); toast("Connecting…"); connectSync(o, r, t, $("#sy_ro").checked); },
     emptyTrash:()=>confirmBox("Permanently delete everything in the trash? This can't be undone.","Empty trash",()=>{ S.trash=[]; persist("trash"); render(); }),
     saveSettings:()=>{ Object.assign(S.settings,{workspace:$("#s_ws").value.trim()||"WAV", currency:$("#s_cur").value.trim()||"SAR", hour:n($("#s_hour").value), energy:n($("#s_energy").value), feePct:n($("#s_fee").value), packaging:n($("#s_pack").value), targetMargin:n($("#s_tm").value)}); persist("settings"); render(); toast("Settings saved"); }
@@ -1088,6 +1138,11 @@ $("#fab").onclick = () => modal("Quick add", `<div class="sheet">
     sell:()=>{ const ps = S.products.filter(p=>n(p.stock)>0); if (!ps.length) return toast("Nothing in stock to sell"); modal("Sell which product?", `<div class="sheet">${ps.map(p=>`<button data-sp="${p.id}">${esc(p.name)}<small>${esc(p.type)} · ${n(p.stock)} in stock</small></button>`).join("")}</div>`, mm => mm.querySelectorAll("[data-sp]").forEach(x => x.onclick = () => { close(); sellForm(product(x.dataset.sp)); })); }
   })[b.dataset.q](); }));
 const h = (location.hash||"").slice(1); if (VIEWS.some(v=>v[0]===h)) view = h;
+if (/invite=/.test(location.hash)){
+  const link = location.href;
+  try{ history.replaceState(null, "", location.pathname); }catch(e){}
+  setTimeout(() => { const inv = parseInvite(link); if (!inv) return toast("This invite link is incomplete."); if (syncOn() && !SY.readonly) return toast("This device is already connected with full access, so the invite was ignored."); useInvite(link); }, 50);
+}
 window.addEventListener("hashchange", () => { const v = location.hash.slice(1); if (VIEWS.some(x=>x[0]===v) && v!==view){ view=v; render(); } });
 boot();
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(()=>{}));
