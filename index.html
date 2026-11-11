@@ -170,7 +170,7 @@ textarea{min-height:80px;resize:vertical}
   .nav .count{display:none}
   .nav .lbl{font-size:0}
   .nav .lbl::after{content:attr(data-short);font-size:11px}
-  main{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:18px 110px}
+  main{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:18px calc(190px + env(safe-area-inset-bottom,0px))}
   .form{grid-template-columns:minmax(0,1fr)}
   .calc{grid-template-columns:repeat(2,minmax(0,1fr))}
   .kv{font-size:20px}
