@@ -126,7 +126,7 @@ tbody tr:hover{background:var(--sunk)}
 .modal h3{font-family:var(--f-display);font-weight:400;font-size:18px;margin:0 0 16px}
 .form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .form .full{grid-column:1/-1}
-label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--muted);min-width:0}
+label.f,div.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--muted);min-width:0}
 input,select,textarea{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;font-size:14px}
 textarea{min-height:80px;resize:vertical}
 .mat{display:grid;grid-template-columns:minmax(0,1fr) 90px auto;gap:8px;align-items:center}
@@ -493,8 +493,11 @@ const OPEN = ["new","printing","ready"];
 function reserved(pid){ return S.orders.filter(o=>OPEN.includes(o.status)).reduce((a,o)=>a+(o.items||[]).filter(i=>i.product===pid).reduce((b,i)=>b+n(i.qty),0),0); }
 function available(p){ return n(p.stock) - reserved(p.id); }
 function suggestPrice(cost){ const m = n(S.settings.targetMargin)/100, f = n(S.settings.feePct)/100; const d = 1-m-f; return d>0.05 ? Math.ceil(cost/d) : 0; }
+const CATS = [["final","Final product"],["prototype","Prototype"]];
+const catOf = p => p && p.category === "prototype" ? "prototype" : "final";
+const catPill = p => catOf(p) === "prototype" ? ` <span class="pill warn" style="vertical-align:1px">Prototype</span>` : ` <span class="pill good" style="vertical-align:1px">Final</span>`;
 function restockPlan(){
-  return S.products.map(p => { const need = Math.max(0, n(p.min) - available(p)); return {p, need}; }).filter(x=>x.need>0)
+  return S.products.filter(p => catOf(p) === "final").map(p => { const need = Math.max(0, n(p.min) - available(p)); return {p, need}; }).filter(x=>x.need>0)
     .map(x => ({...x, minutes:n(x.p.minutes)*x.need, mats:(x.p.materials||[]).filter(m=>n(m.grams)>0).map(m=>({spoolId:m.spoolId, grams:n(m.grams)*x.need}))}));
 }
 function deductSpools(usage, sign=-1){
@@ -649,7 +652,7 @@ function vHome(){
       ${syncOn() && SY.readonly ? installTip() : ""}<section class="panel"><div class="row" style="justify-content:space-between"><h2>Needs attention</h2>${plan.length?`<button class="btn sm ghost" data-go="stock">Restock plan →</button>`:""}</div>${alerts.length ? `<div class="list">${alerts.map(([k,t])=>`<div class="alert ${k==="bad"?"bad":"warn"}"><span>${esc(t)}</span></div>`).join("")}</div>` : `<p class="meta">Everything is above its minimum.</p>`}</section>
       <section class="panel"><h2>Margin per unit</h2>
         <div class="tablewrap" style="border:0"><table><thead><tr><th>Product</th><th class="r">Cost</th><th class="r">Price</th><th class="r">Profit</th><th class="r">Can make</th></tr></thead><tbody>
-        ${top.map(({p,c})=>{ const pr=n(p.price)-c, pct=n(p.price)?pr/n(p.price)*100:0, can=canMake(p); return `<tr><td><div class="name">${esc(p.name)}</div><div class="meta">${esc(p.type)}</div></td><td class="r num">${money(c)}</td><td class="r num">${money(p.price)}</td><td class="r num">${money(pr)} <span class="pill ${pct>=50?"good":pct>=25?"warn":"bad"}">${Math.round(pct)}%</span></td><td class="r num">${can===Infinity?"—":can}</td></tr>`; }).join("")}
+        ${top.map(({p,c})=>{ const pr=n(p.price)-c, pct=n(p.price)?pr/n(p.price)*100:0, can=canMake(p); return `<tr><td><div class="name">${esc(p.name)}${catPill(p)}</div><div class="meta">${esc(p.type)}</div></td><td class="r num">${money(c)}</td><td class="r num">${money(p.price)}</td><td class="r num">${money(pr)} <span class="pill ${pct>=50?"good":pct>=25?"warn":"bad"}">${Math.round(pct)}%</span></td><td class="r num">${can===Infinity?"—":can}</td></tr>`; }).join("")}
         </tbody></table></div></section>
     </div>
     <div class="list" style="gap:20px">
@@ -667,11 +670,13 @@ function canMake(p){
 
 function vProducts(){
   const q = (filter.p||"").toLowerCase();
-  const list = S.products.filter(p => !q || (p.name+" "+p.type).toLowerCase().includes(q));
-  return head("Products", "Cost is filament + printer time + extras. Edit a product to change its recipe.", `<input id="pq" placeholder="Search" value="${esc(filter.p||"")}" style="width:180px"><button class="btn primary" data-act="newProduct">Add product</button>`) +
+  const pc = filter.pc || "all";
+  const list = S.products.filter(p => (pc === "all" || catOf(p) === pc) && (!q || (p.name+" "+p.type).toLowerCase().includes(q)));
+  const cnt = k => S.products.filter(p => catOf(p) === k).length;
+  return head("Products", "Cost is filament + printer time + extras. Prototypes are left out of the restock plan.", `<div class="tabs">${[["all","All "+S.products.length],["final","Final "+cnt("final")],["prototype","Prototype "+cnt("prototype")]].map(([k,l])=>`<button data-pc="${k}" aria-pressed="${pc===k}">${l}</button>`).join("")}</div><input id="pq" placeholder="Search" value="${esc(filter.p||"")}" style="width:180px"><button class="btn primary" data-act="newProduct">Add product</button>`) +
   (list.length ? `<div class="tablewrap"><table><thead><tr><th>Product</th><th>Filament</th><th class="r">Print</th><th class="r">Unit cost</th><th class="r">Price</th><th class="r">Margin</th><th class="r">Stock</th><th></th></tr></thead><tbody>${list.map(p=>{
     const c = unitCost(p), m = n(p.price)?(n(p.price)-c)/n(p.price)*100:0, st = stockState(p);
-    return `<tr><td><div class="name">${esc(p.name)}</div><div class="meta">${esc(p.type)}</div></td>
+    return `<tr><td><div class="name">${esc(p.name)}${catPill(p)}</div><div class="meta">${esc(p.type)}</div></td>
     <td><div class="swrow">${(p.materials||[]).map(mm=>{const s=spool(mm.spoolId);return `<span class="sw" title="${esc(s?.name||"?")} ${g(mm.grams)} g" style="background:${hex(s?.color)}"></span>`}).join("")}<span class="meta num" style="margin-left:6px">${g(bomGrams(p))} g</span></div></td>
     <td class="r num">${hrs(p.minutes)}</td><td class="r num">${money(c)}</td><td class="r num">${money(p.price)}</td>
     <td class="r"><span class="pill ${m>=50?"good":m>=25?"warn":"bad"}">${Math.round(m)}%</span></td>
@@ -716,7 +721,7 @@ function vStock(){
   const units = S.products.reduce((a,p)=>a+n(p.stock),0), value = S.products.reduce((a,p)=>a+n(p.stock)*n(p.price),0);
   const plan = restockPlan();
   const rows = S.products.map(p => { const r = reserved(p.id), av = n(p.stock)-r, st = av<=0?"bad":av<n(p.min)?"warn":"good";
-    return `<tr><td><div class="name">${esc(p.name)}</div><div class="meta">${esc(p.type)}</div></td>
+    return `<tr><td><div class="name">${esc(p.name)}${catPill(p)}</div><div class="meta">${esc(p.type)}</div></td>
     <td><div class="stepper"><button class="btn sm" data-step="${p.id}" data-d="-1" aria-label="Remove one">−</button><input class="num" data-count="${p.id}" type="number" min="0" value="${n(p.stock)}" aria-label="On hand for ${esc(p.name)}"><button class="btn sm" data-step="${p.id}" data-d="1" aria-label="Add one">+</button></div></td>
     <td class="r num">${r||"—"}</td><td class="r"><span class="pill ${st}">${av}</span></td><td class="r num">${n(p.min)}</td><td class="r num">${money(n(p.stock)*n(p.price))}</td>
     <td class="r"><div class="row" style="justify-content:flex-end;flex-wrap:nowrap"><button class="btn sm" data-sell="${p.id}" ${n(p.stock)?"":"disabled"}>Sell</button><button class="btn sm ghost" data-adjp="${p.id}">Adjust</button></div></td></tr>`; }).join("");
@@ -877,6 +882,7 @@ function productForm(p){
   modal(isNew?"Add product":"Edit "+p.name, `<div class="form">
     <label class="f">Code<input id="p_name" value="${esc(p.name)}"></label>
     <label class="f">Name / type<input id="p_type" value="${esc(p.type)}"></label>
+    <div class="f full"><span>Category</span><div class="seg" role="radiogroup" aria-label="Category" style="grid-template-columns:repeat(2,minmax(0,1fr))">${CATS.map(([k,l])=>`<label class="${k==="final"?"ok":""}"><input type="radio" name="p_cat" value="${k}" ${catOf(p)===k?"checked":""}>${l}<small>${k==="final"?"ready to sell":"still testing"}</small></label>`).join("")}</div></div>
     <div class="full"><div class="eyebrow" style="margin-bottom:6px">Filament per unit (g)</div><div class="list" id="mats" style="gap:6px">${p.materials.map(matRow).join("")}</div><button class="btn sm" id="addMat" style="margin-top:6px">Add colour</button></div>
     <label class="f">Print time (min)<input id="p_min" type="number" value="${n(p.minutes)}"></label>
     <label class="f">Extras per unit (${cur()})<input id="p_ext" type="number" step="0.01" value="${n(p.extras)}"></label>
@@ -886,7 +892,7 @@ function productForm(p){
     <label class="f check" style="align-self:end"><input id="p_nfc" type="checkbox" ${p.nfc?"checked":""}> Has NFC chip</label>
     <div class="full calc" id="pcalc"></div>
   </div><div class="foot">${isNew?"":`<button class="btn danger" id="pdel" style="margin-right:auto">Delete</button>`}<button class="btn" data-x>Cancel</button><button class="btn primary" id="psave">Save</button></div>`, m => {
-    const read = () => { p.materials = [...m.querySelectorAll("[data-mi]")].map(r=>({spoolId:r.querySelector("[data-mspool]").value, grams:n(r.querySelector("[data-mg]").value)})); Object.assign(p,{name:$("#p_name").value.trim(), type:$("#p_type").value.trim(), minutes:n($("#p_min").value), extras:n($("#p_ext").value), price:n($("#p_price").value), min:n($("#p_minst").value), stock:n($("#p_stock").value), nfc:$("#p_nfc").checked}); p.grams = Math.round(p.materials.reduce((a,x)=>a+x.grams,0)*100)/100; };
+    const read = () => { p.materials = [...m.querySelectorAll("[data-mi]")].map(r=>({spoolId:r.querySelector("[data-mspool]").value, grams:n(r.querySelector("[data-mg]").value)})); Object.assign(p,{name:$("#p_name").value.trim(), type:$("#p_type").value.trim(), minutes:n($("#p_min").value), extras:n($("#p_ext").value), price:n($("#p_price").value), min:n($("#p_minst").value), stock:n($("#p_stock").value), nfc:$("#p_nfc").checked, category:(m.querySelector('input[name="p_cat"]:checked')||{}).value||"final"}); p.grams = Math.round(p.materials.reduce((a,x)=>a+x.grams,0)*100)/100; };
     const calc = () => { read(); const mc=materialCost(p.materials), tc=n(p.minutes)/60*runRate(), c=mc+tc+n(p.extras), pr=n(p.price)-c; $("#pcalc").innerHTML = `<div>Filament<b>${money(mc)}</b></div><div>Printer time<b>${money(tc)}</b></div><div>Unit cost<b>${money(c)}</b></div><div>Profit<b style="color:var(--${pr>=0?"good":"bad"})">${money(pr)}</b></div><div>Suggested price<b>${suggestPrice(c)?money(suggestPrice(c)):"—"}</b><button class="btn sm ghost" type="button" id="useSug" style="padding:0;margin-top:2px">Use it</button></div>`; const u=$("#useSug"); if (u) u.onclick = () => { $("#p_price").value = suggestPrice(c); calc(); }; };
     const wire = () => m.querySelectorAll("[data-mdel]").forEach(b => b.onclick = () => { b.closest("[data-mi]").remove(); calc(); });
     m.addEventListener("input", calc); m.addEventListener("change", calc); wire(); calc();
@@ -1108,6 +1114,7 @@ function bind(){
   M.querySelectorAll("[data-count]").forEach(i => i.onchange = () => setStock(i.dataset.count, i.value, "Count correction"));
   M.querySelectorAll("[data-adjp]").forEach(b => b.onclick = () => adjustStockForm(product(b.dataset.adjp)));
   M.querySelectorAll("[data-sell]").forEach(b => b.onclick = () => sellForm(product(b.dataset.sell)));
+  M.querySelectorAll("[data-pc]").forEach(b => b.onclick = () => { filter.pc = b.dataset.pc; render(); });
   M.querySelectorAll("[data-rp]").forEach(b => b.onclick = () => { filter.rp = b.dataset.rp; render(); });
   M.querySelectorAll("[data-paid]").forEach(b => b.onclick = () => { const o = S.orders.find(x=>x.id===b.dataset.paid); o.paid = !o.paid; persist("orders"); render(); toast(o.paid?"Marked paid":"Marked unpaid"); });
   M.querySelectorAll("[data-edits]").forEach(b => b.onclick = () => spoolForm(spool(b.dataset.edits)));
