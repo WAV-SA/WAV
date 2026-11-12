@@ -126,6 +126,21 @@ tbody tr:hover{background:var(--sunk)}
 .dur label{position:relative;display:block}
 .dur label span{position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:13px;font-weight:500;pointer-events:none}
 .dur input{padding-right:40px}
+.thumb{width:44px;height:44px;border-radius:8px;object-fit:cover;background:var(--sunk);flex:none;display:block}
+.pname{display:flex;gap:10px;align-items:center;min-width:0}
+[data-viewp]{cursor:pointer}
+[data-viewp]:hover .name{text-decoration:underline;text-underline-offset:3px}
+.hero{width:100%;aspect-ratio:4/3;max-height:320px;object-fit:cover;border-radius:12px;background:var(--sunk);display:block}
+.hero.ph{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:var(--muted);font-size:13px;border:1.5px dashed var(--line);background:transparent;aspect-ratio:16/7}
+.vgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:14px 0}
+.vgrid>div{background:var(--surface);padding:10px 12px}
+.vgrid b{display:block;font-family:var(--f-mono);font-size:17px;margin-top:2px}
+.vsec{margin-top:16px}
+.vsec h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+.vrow{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line);font-size:14px}
+.vrow:last-child{border-bottom:0}
+.photo-pick{display:flex;gap:12px;align-items:center}
+.photo-pick img{width:72px;height:72px;border-radius:10px;object-fit:cover;background:var(--sunk)}
 .drop{border:1.5px dashed var(--line);border-radius:10px;padding:12px 14px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;color:var(--muted);font-size:13px}
 .drop.over{border-color:var(--accent);background:var(--accent-soft)}
 .scrim{position:fixed;inset:0;background:color-mix(in srgb,#000 45%,transparent);display:flex;align-items:center;justify-content:center;padding:16px;z-index:40}
@@ -248,7 +263,7 @@ body.ro [data-count]{border-color:transparent;background:transparent}
 <script>
 (() => {
 const KEYS = ["products","spools","prints","orders","moves","fil","ideas","lessons","settings","trash"];
-const APP_VERSION = "2026.11.12d";
+const APP_VERSION = "2026.11.12e";
 const blank = () => ({products:[],spools:[],prints:[],orders:[],moves:[],fil:[],ideas:[],lessons:[],settings:{hour:2,energy:0.2,wear:0,failAllow:true,workspace:"WAV",currency:"SAR",feePct:0,packaging:0,targetMargin:50},trash:[]});
 let S = blank();
 let view = "home", db = null, mode = "local", loaded = false, filter = {};
@@ -408,7 +423,7 @@ async function syncNow(manual){
       }
       break;
     }
-    SY.lastSync = new Date().toISOString(); SY.error = ""; SY.offline = false; saveSY();
+    SY.lastSync = new Date().toISOString(); SY.error = ""; SY.offline = false; saveSY(); flushUploads();
     if (manual) toast("Synced");
   }catch(e){
     SY.error = e.message; SY.offline = !!e.offline; saveSY();
@@ -706,6 +721,7 @@ function render(){
     td.insertAdjacentHTML("beforeend", `<button class="xbtn mobile-only" type="button" aria-expanded="false">Show details ▾</button>`);
     const b = td.querySelector(".xbtn"); b.onclick = () => { const o = tr.classList.toggle("open"); b.setAttribute("aria-expanded", o); b.textContent = o ? "Hide details ▴" : "Show details ▾"; }; });
   $("#main").querySelectorAll('input:not([type]),input[type="text"],textarea').forEach(i => i.dir = "auto");
+  hydratePhotos($("#main"));
   bind();
 }
 
@@ -745,7 +761,7 @@ function vHome(){
       ${syncOn() && SY.readonly ? installTip() : ""}<section class="panel"><div class="row" style="justify-content:space-between"><h2>Needs attention</h2>${plan.length?`<button class="btn sm ghost" data-go="stock">Restock plan →</button>`:""}</div>${alerts.length ? `<div class="list">${alerts.map(([k,t])=>`<div class="alert ${k==="bad"?"bad":"warn"}"><span>${esc(t)}</span></div>`).join("")}</div>` : `<p class="meta">Everything is above its minimum.</p>`}</section>
       <section class="panel"><h2>Margin per unit</h2>
         <div class="tablewrap" style="border:0"><table><thead><tr><th>Product</th><th class="r">Cost</th><th class="r">Price</th><th class="r">Profit</th><th class="r">Can make</th></tr></thead><tbody>
-        ${top.map(({p,c})=>{ const pr=n(p.price)-c, pct=n(p.price)?pr/n(p.price)*100:0, can=canMake(p); return `<tr><td><div class="name">${esc(p.name)}${catPill(p)}</div><div class="meta">${esc(p.type)}</div></td><td class="r num">${money(c)}</td><td class="r num">${money(p.price)}</td><td class="r num">${money(pr)} <span class="pill ${pct>=50?"good":pct>=25?"warn":"bad"}">${Math.round(pct)}%</span></td><td class="r num">${can===Infinity?"—":can}</td></tr>`; }).join("")}
+        ${top.map(({p,c})=>{ const pr=n(p.price)-c, pct=n(p.price)?pr/n(p.price)*100:0, can=canMake(p); return `<tr><td>${pname(p)}</td><td class="r num">${money(c)}</td><td class="r num">${money(p.price)}</td><td class="r num">${money(pr)} <span class="pill ${pct>=50?"good":pct>=25?"warn":"bad"}">${Math.round(pct)}%</span></td><td class="r num">${can===Infinity?"—":can}</td></tr>`; }).join("")}
         </tbody></table></div></section>
     </div>
     <div class="list" style="gap:20px">
@@ -769,7 +785,7 @@ function vProducts(){
   return head("Products", "Cost is filament + printer time + extras. Prototypes are left out of the restock plan.", `<div class="tabs">${[["all","All "+S.products.length],["final","Final "+cnt("final")],["prototype","Prototype "+cnt("prototype")]].map(([k,l])=>`<button data-pc="${k}" aria-pressed="${pc===k}">${l}</button>`).join("")}</div><input id="pq" placeholder="Search" value="${esc(filter.p||"")}" style="width:180px"><button class="btn primary" data-act="newProduct">Add product</button>`) +
   (list.length ? `<div class="tablewrap"><table data-compact><thead><tr><th>Product</th><th>Filament</th><th class="r">Print</th><th class="r">Unit cost</th><th class="r">Price</th><th class="r">Margin</th><th class="r">Stock</th><th></th></tr></thead><tbody>${list.map(p=>{
     const c = unitCost(p), m = n(p.price)?(n(p.price)-c)/n(p.price)*100:0, st = stockState(p);
-    return `<tr><td><div class="name">${esc(p.name)}${catPill(p)}</div><div class="meta">${esc(p.type)}</div></td>
+    return `<tr><td>${pname(p)}</td>
     <td><div class="swrow">${(p.materials||[]).map(mm=>{const s=spool(mm.spoolId);return `<span class="sw" title="${esc(s?.name||"?")} ${g(mm.grams)} g" style="background:${hex(s?.color)}"></span>`}).join("")}<span class="meta num" style="margin-left:6px">${g(bomGrams(p))} g</span></div></td>
     <td class="r num">${hrs(p.minutes)}</td><td class="r num">${money(c)}</td><td class="r num">${money(p.price)}</td>
     <td class="r k"><span class="pill ${m>=50?"good":m>=25?"warn":"bad"}">${Math.round(m)}%</span></td>
@@ -814,7 +830,7 @@ function vStock(){
   const units = S.products.reduce((a,p)=>a+n(p.stock),0), value = S.products.reduce((a,p)=>a+n(p.stock)*n(p.price),0);
   const plan = restockPlan();
   const rows = S.products.map(p => { const r = reserved(p.id), av = n(p.stock)-r, st = av<=0?"bad":av<n(p.min)?"warn":"good";
-    return `<tr><td><div class="name">${esc(p.name)}${catPill(p)}</div><div class="meta">${esc(p.type)}</div></td>
+    return `<tr><td>${pname(p)}</td>
     <td class="k"><div class="stepper"><button class="btn sm" data-step="${p.id}" data-d="-1" aria-label="Remove one">−</button><input class="num" data-count="${p.id}" type="number" min="0" value="${n(p.stock)}" aria-label="On hand for ${esc(p.name)}"><button class="btn sm" data-step="${p.id}" data-d="1" aria-label="Add one">+</button></div></td>
     <td class="r num">${r||"—"}</td><td class="r k"><span class="pill ${st}">${av}</span></td><td class="r num">${n(p.min)}</td><td class="r num">${money(n(p.stock)*n(p.price))}</td>
     <td class="r"><div class="row" style="justify-content:flex-end;flex-wrap:nowrap"><button class="btn sm" data-sell="${p.id}" ${n(p.stock)?"":"disabled"}>Sell</button><button class="btn sm ghost" data-adjp="${p.id}">Adjust</button></div></td></tr>`; }).join("");
@@ -976,6 +992,7 @@ function productForm(p){
   if (!p.materials || !p.materials.length) p.materials = [{spoolId:p.spoolId||S.spools[0]?.id||"", grams:n(p.grams)}];
   const matRow = (m,i) => `<div class="mat" data-mi="${i}"><select data-mspool aria-label="Spool">${spoolOptions(m.spoolId)}</select><input data-mg type="number" step="0.01" min="0" value="${n(m.grams)}" aria-label="Grams"><button class="btn sm ghost" data-mdel aria-label="Remove">✕</button></div>`;
   modal(isNew?"Add product":"Edit "+p.name, `<div class="form">
+    <div class="f full"><span>Photo</span><div class="photo-pick"><img id="p_photo_img" ${p.photo?`data-photo="${p.id}"`:""} alt="" ${p.photo?"":'style="visibility:hidden"'}><div class="row"><button class="btn sm" type="button" id="p_photo_pick">${p.photo?"Change photo":"Add photo"}</button><button class="btn sm ghost danger" type="button" id="p_photo_del" ${p.photo?"":"hidden"}>Remove</button></div></div></div>
     <label class="f">Code<input id="p_name" value="${esc(p.name)}"></label>
     <label class="f">Name / type<input id="p_type" value="${esc(p.type)}"></label>
     <div class="f full"><span>Category</span><div class="seg" role="radiogroup" aria-label="Category" style="grid-template-columns:repeat(2,minmax(0,1fr))">${CATS.map(([k,l])=>`<label class="${k==="final"?"ok":""}"><input type="radio" name="p_cat" value="${k}" ${catOf(p)===k?"checked":""}>${l}<small>${k==="final"?"ready to sell":"still testing"}</small></label>`).join("")}</div></div>
@@ -1004,8 +1021,106 @@ function productForm(p){
       calc(); toast(mode === "add" ? `Added ${r.name} to the recipe (per piece, ${r.units} on its plate).` : `Recipe set per piece from ${r.units} on the plate. Colour-change waste is already included.`);
     }});
     m.querySelector("[data-x]").onclick = close;
-    $("#psave").onclick = () => { try{ read(); if (!p.name){ $("#p_name").focus(); return; } p.spoolId = ""; recompute(); const typed = n(p.stock), before = isNew ? 0 : n(product(p.id)?.stock); if (!isNew){ const i=S.products.findIndex(x=>x.id===p.id); S.products[i]=p; if (typed!==before) logMove(p.id, typed-before, "Edited in product"); } else { S.products.push(p); ensureLedger(); } persist("products","moves"); close(); render(); toast("Product saved"); }catch(e){ console.error(e); toast("Couldn't save: "+(e.message||e)); } };
+    let newPhoto = null, dropPhoto = false;
+    hydratePhotos(m);
+    $("#p_photo_pick").onclick = () => pickImage(async f => { try{ const b = await shrinkImage(f); newPhoto = f; dropPhoto = false; const im = $("#p_photo_img"); im.src = URL.createObjectURL(b); im.style.visibility = "visible"; $("#p_photo_del").hidden = false; $("#p_photo_pick").textContent = "Change photo"; }catch(e){ toast("Couldn't read that photo. Try a JPEG or PNG."); } });
+    $("#p_photo_del").onclick = () => { newPhoto = null; dropPhoto = true; const im = $("#p_photo_img"); im.removeAttribute("src"); im.style.visibility = "hidden"; $("#p_photo_del").hidden = true; $("#p_photo_pick").textContent = "Add photo"; };
+    $("#psave").onclick = async () => { try{ read(); if (!p.name){ $("#p_name").focus(); return; }
+      if (newPhoto){ p.photo = await savePhoto(p, newPhoto); } else if (dropPhoto){ p.photo = null; } p.spoolId = ""; recompute(); const typed = n(p.stock), before = isNew ? 0 : n(product(p.id)?.stock); if (!isNew){ const i=S.products.findIndex(x=>x.id===p.id); S.products[i]=p; if (typed!==before) logMove(p.id, typed-before, "Edited in product"); } else { S.products.push(p); ensureLedger(); } persist("products","moves"); close(); render(); toast("Product saved"); }catch(e){ console.error(e); toast("Couldn't save: "+(e.message||e)); } };
     if (!isNew) $("#pdel").onclick = () => { close(); trash("products", product(p.id)); render(); };
+  });
+}
+
+/* ---------- product photos: shrunk on the device, kept in IndexedDB, uploaded once to images/ in the sync repository ---------- */
+const IDB = (() => {
+  let dbp = null;
+  const open = () => dbp || (dbp = new Promise((res, rej) => { try{ const r = indexedDB.open("wav-img", 1); r.onupgradeneeded = () => r.result.createObjectStore("imgs"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }catch(e){ rej(e); } }));
+  const run = async (mode, fn) => { const d = await open(); return new Promise((res, rej) => { const t = d.transaction("imgs", mode), rq = fn(t.objectStore("imgs")); t.oncomplete = () => res(rq ? rq.result : undefined); t.onerror = () => rej(t.error); }); };
+  return { get: id => run("readonly", st => st.get(id)).catch(() => null), put: (id, b) => run("readwrite", st => st.put(b, id)).catch(() => null) };
+})();
+const photoURLs = {};
+async function shrinkImage(file){
+  let src, w, h;
+  try{ src = await createImageBitmap(file); w = src.width; h = src.height; }
+  catch(e){ const img = new Image(); img.src = URL.createObjectURL(file); await img.decode(); src = img; w = img.naturalWidth; h = img.naturalHeight; }
+  const k = Math.min(1, 900/Math.max(w, h)), c = document.createElement("canvas");
+  c.width = Math.round(w*k); c.height = Math.round(h*k); c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
+  return await new Promise(r => c.toBlob(r, "image/jpeg", 0.78));
+}
+function blobToB64(b){ return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1]); fr.onerror = () => rej(fr.error); fr.readAsDataURL(b); }); }
+function pendingUploads(){ try{ return JSON.parse(localStorage.getItem("wav-img-pending")||"[]"); }catch(e){ return []; } }
+function setPending(l){ try{ localStorage.setItem("wav-img-pending", JSON.stringify(l)); }catch(e){} }
+let uploading = false;
+async function flushUploads(){
+  if (uploading || !syncOn() || SY.readonly) return; const list = pendingUploads(); if (!list.length) return;
+  uploading = true;
+  try{
+    for (const ph of list){
+      const b = await IDB.get(ph.id); if (!b){ setPending(pendingUploads().filter(x => x.id !== ph.id)); continue; }
+      const r = await ghFetch("/contents/"+ph.path, {method:"PUT", body:JSON.stringify({message:"WAV photo "+ph.id, content:await blobToB64(b)})});
+      if (r.ok || r.status === 422) setPending(pendingUploads().filter(x => x.id !== ph.id)); else break;
+    }
+  }catch(e){} finally{ uploading = false; }
+}
+async function photoURL(ph){
+  if (!ph || !ph.id) return null; if (photoURLs[ph.id]) return photoURLs[ph.id];
+  let b = await IDB.get(ph.id);
+  if (!b && syncOn()){
+    try{ const r = await ghFetch("/contents/"+ph.path); if (r.ok){ const j = await r.json();
+        const bin = atob(String(j.content||"").replace(/\s/g,"")), u = new Uint8Array(bin.length); for (let i=0;i<bin.length;i++) u[i] = bin.charCodeAt(i);
+        if (u.length){ b = new Blob([u], {type:"image/jpeg"}); IDB.put(ph.id, b); } } }catch(e){}
+  }
+  return b ? (photoURLs[ph.id] = URL.createObjectURL(b)) : null;
+}
+function hydratePhotos(root){
+  (root||document).querySelectorAll("img[data-photo]").forEach(async img => { const p = product(img.dataset.photo); const u = p && await photoURL(p.photo); if (u) img.src = u; else img.style.visibility = "hidden"; });
+}
+const thumb = p => p && p.photo ? `<img class="thumb" data-photo="${p.id}" alt="" width="44" height="44">` : "";
+const pname = p => `<div class="pname" data-viewp="${p.id}">${thumb(p)}<div style="min-width:0"><div class="name">${esc(p.name)}${catPill(p)}</div><div class="meta">${esc(p.type)}</div></div></div>`;
+async function savePhoto(p, file){
+  const b = await shrinkImage(file); if (!b) throw new Error("Couldn't read that photo. Try a JPEG or PNG.");
+  const id = "img-" + uid(); await IDB.put(id, b); photoURLs[id] = URL.createObjectURL(b);
+  const ph = {id, path:"images/"+id+".jpg"}; setPending([...pendingUploads(), ph]); flushUploads();
+  return ph;
+}
+function pickImage(cb){ const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*"; inp.onchange = () => { const f = inp.files[0]; if (f) cb(f); }; inp.click(); }
+
+function productView(pid){
+  recompute(); const p = product(pid); if (!p) return;
+  const k = costParts(p), c = k.total, pr = n(p.price) - c, mg = n(p.price) ? pr/n(p.price)*100 : 0, rsv = reserved(p.id), can = canMake(p);
+  const prints = S.prints.filter(x => x.product === p.id), units = prints.reduce((a,x)=>a+(n(x.qty)||1),0), good = prints.reduce((a,x)=>a+goodOf(x),0);
+  const sold = S.orders.filter(o => o.status === "delivered").flatMap(o => (o.items||[]).filter(i => i.product === p.id));
+  const soldU = sold.reduce((a,i)=>a+n(i.qty),0), rev = sold.reduce((a,i)=>a+n(i.qty)*n(i.price),0);
+  const last = prints.map(x => x.date).sort().pop();
+  modal(p.name, `${p.photo ? `<img class="hero" data-photo="${p.id}" alt="${esc(p.name)}">` : `<div class="hero ph ro-hide"><span>No photo yet</span><button class="btn sm" id="pv_photo" type="button">Add photo</button></div>`}
+    <div class="row" style="justify-content:space-between;margin-top:12px"><div><div class="name" style="font-size:16px">${esc(p.type)||"&nbsp;"}</div><div class="meta">${catOf(p)==="prototype"?"Prototype · still testing":"Final product · ready to sell"}${p.nfc?" · NFC chip":""}</div></div>${catPill(p)}</div>
+    <div class="vgrid">
+      <div><span class="meta">Price</span><b>${money(p.price)}</b></div>
+      <div><span class="meta">Unit cost</span><b>${money(c)}</b></div>
+      <div><span class="meta">Profit per piece</span><b style="color:var(--${pr>=0?"good":"bad"})">${money(pr)}</b><span class="pill ${mg>=50?"good":mg>=25?"warn":"bad"}">${Math.round(mg)}%</span></div>
+      <div><span class="meta">In stock</span><b>${n(p.stock)}</b><span class="meta">${rsv?`${rsv} reserved · `:""}min ${n(p.min)}</span></div>
+      <div><span class="meta">Can still print</span><b>${can===Infinity?"—":can}</b><span class="meta">with filament on hand</span></div>
+      <div><span class="meta">Print time</span><b>${hrs(p.minutes)}</b><span class="meta">per piece</span></div>
+    </div>
+    <div class="vsec"><h4>Recipe per piece</h4>${(p.materials||[]).filter(m=>n(m.grams)>0).map(m => { const sp = spool(m.spoolId); return `<div class="vrow"><span class="row" style="gap:8px;min-width:0"><span class="sw" style="background:${hex(sp?.color)}"></span><span>${esc(sp?.name.trim()||"Deleted spool")}</span></span><span class="num">${g(m.grams)} g</span></div>`; }).join("") || `<p class="meta">No recipe yet.</p>`}
+      ${n(p.flush)?`<div class="vrow"><span>Colour-change waste</span><span class="num">${g(p.flush)} g</span></div>`:""}
+      ${n(p.extras)?`<div class="vrow"><span>Extras (magnets, chips…)</span><span class="num">${money(p.extras)}</span></div>`:""}</div>
+    <div class="vsec"><h4>Cost per piece</h4>
+      <div class="vrow"><span>Filament</span><span class="num">${money(k.fil)}</span></div>
+      ${k.flush?`<div class="vrow"><span>Colour-change waste</span><span class="num">${money(k.flush)}</span></div>`:""}
+      <div class="vrow"><span>Printer time</span><span class="num">${money(k.time)}</span></div>
+      ${k.fail?`<div class="vrow"><span>Failure allowance (${Math.round(k.fr*100)}%)</span><span class="num">${money(k.fail)}</span></div>`:""}
+      ${k.extras?`<div class="vrow"><span>Extras</span><span class="num">${money(k.extras)}</span></div>`:""}
+      <div class="vrow"><b>Total</b><b class="num">${money(c)} ${cur()}</b></div></div>
+    <div class="vsec"><h4>History</h4>
+      <div class="vrow"><span>Printed</span><span class="num">${units} pieces in ${prints.length} prints${units?` · ${Math.round(good/units*100)}% good`:""}</span></div>
+      <div class="vrow"><span>Last printed</span><span class="num">${last?fmtDate(last):"—"}</span></div>
+      <div class="vrow"><span>Sold</span><span class="num">${soldU} pieces · ${money(rev)} ${cur()}</span></div></div>
+    <div class="foot"><button class="btn" data-x>Close</button><button class="btn" data-sell="${p.id}" ${n(p.stock)>0?"":"disabled"}>Sell</button><button class="btn" data-print="${p.id}">Print</button><button class="btn primary" data-editp="${p.id}">Edit</button></div>`, m => {
+    m.querySelector("[data-x]").onclick = close; hydratePhotos(m);
+    const go = (sel, fn) => { const b = m.querySelector(sel); if (b) b.onclick = () => { close(); fn(); }; };
+    go("[data-sell]", () => sellForm(p)); go("[data-print]", () => printForm(p.id)); go("[data-editp]", () => productForm(product(p.id)));
+    const ab = $("#pv_photo"); if (ab) ab.onclick = () => pickImage(async f => { try{ toast("Saving photo…"); const ph = await savePhoto(p, f); const cur0 = product(p.id); cur0.photo = ph; persist("products"); render(); productView(p.id); toast("Photo added"); }catch(e){ toast(e.message); } });
   });
 }
 
@@ -1386,6 +1501,7 @@ function bind(){
     saveSettings:()=>{ Object.assign(S.settings,{workspace:$("#s_ws").value.trim()||"WAV", currency:$("#s_cur").value.trim()||"SAR", hour:n($("#s_hour").value), energy:n($("#s_energy").value), wear:n($("#s_wear").value), failAllow:$("#s_fail").checked, feePct:n($("#s_fee").value), packaging:n($("#s_pack").value), targetMargin:n($("#s_tm").value)}); persist("settings"); render(); toast("Settings saved"); }
   })[b.dataset.act]?.());
   M.querySelectorAll("[data-editp]").forEach(b => b.onclick = () => productForm(product(b.dataset.editp)));
+  M.querySelectorAll("[data-viewp]").forEach(el => el.onclick = () => productView(el.dataset.viewp));
   M.querySelectorAll("[data-print]").forEach(b => b.onclick = () => printForm(b.dataset.print, b.dataset.q));
   M.querySelectorAll("[data-step]").forEach(b => b.onclick = () => { const p = product(b.dataset.step); setStock(p.id, n(p.stock)+n(b.dataset.d), "Manual adjustment"); });
   M.querySelectorAll("[data-count]").forEach(i => i.onchange = () => setStock(i.dataset.count, i.value, "Count correction"));
