@@ -248,7 +248,7 @@ body.ro [data-count]{border-color:transparent;background:transparent}
 <script>
 (() => {
 const KEYS = ["products","spools","prints","orders","moves","fil","ideas","lessons","settings","trash"];
-const APP_VERSION = "2026.11.12c";
+const APP_VERSION = "2026.11.12d";
 const blank = () => ({products:[],spools:[],prints:[],orders:[],moves:[],fil:[],ideas:[],lessons:[],settings:{hour:2,energy:0.2,wear:0,failAllow:true,workspace:"WAV",currency:"SAR",feePct:0,packaging:0,targetMargin:50},trash:[]});
 let S = blank();
 let view = "home", db = null, mode = "local", loaded = false, filter = {};
@@ -995,10 +995,13 @@ function productForm(p){
     const wire = () => m.querySelectorAll("[data-mdel]").forEach(b => b.onclick = () => { b.closest("[data-mi]").remove(); calc(); });
     m.addEventListener("input", calc); m.addEventListener("change", calc); wire(); calc();
     $("#addMat").onclick = () => { $("#mats").insertAdjacentHTML("beforeend", matRow({spoolId:S.spools[0]?.id, grams:0}, Date.now())); wire(); };
-    wireDrop($("#p_bb"), {purpose:"recipe", apply: r => {
-      $("#mats").innerHTML = r.items.map((it,i) => matRow({spoolId:it.spoolId, grams:Math.round(it.grams/r.units*100)/100}, i)).join(""); wire();
-      setDur("p_min", r.seconds/60/r.units); $("#p_flush").value = 0;
-      calc(); toast(`Recipe set per piece from ${r.units} on the plate. Colour-change waste is already included.`);
+    const curRecipe = () => [...m.querySelectorAll("[data-mi]")].map(row => ({spoolId:row.querySelector("[data-mspool]").value, grams:n(row.querySelector("[data-mg]").value)})).filter(x => x.grams > 0);
+    wireDrop($("#p_bb"), {purpose:"recipe", canAdd: () => curRecipe().length > 0, apply: (r, mode) => {
+      const per = {}; if (mode === "add") curRecipe().forEach(x => { per[x.spoolId] = (per[x.spoolId]||0) + x.grams; });
+      r.items.forEach(it => { per[it.spoolId] = (per[it.spoolId]||0) + it.grams/r.units; });
+      $("#mats").innerHTML = Object.entries(per).map(([spoolId, gr], i) => matRow({spoolId, grams:Math.round(gr*100)/100}, i)).join(""); wire();
+      const addMin = r.seconds/60/r.units; setDur("p_min", mode === "add" ? n($("#p_min").value) + addMin : addMin); $("#p_flush").value = 0;
+      calc(); toast(mode === "add" ? `Added ${r.name} to the recipe (per piece, ${r.units} on its plate).` : `Recipe set per piece from ${r.units} on the plate. Colour-change waste is already included.`);
     }});
     m.querySelector("[data-x]").onclick = close;
     $("#psave").onclick = () => { try{ read(); if (!p.name){ $("#p_name").focus(); return; } p.spoolId = ""; recompute(); const typed = n(p.stock), before = isNew ? 0 : n(product(p.id)?.stock); if (!isNew){ const i=S.products.findIndex(x=>x.id===p.id); S.products[i]=p; if (typed!==before) logMove(p.id, typed-before, "Edited in product"); } else { S.products.push(p); ensureLedger(); } persist("products","moves"); close(); render(); toast("Product saved"); }catch(e){ console.error(e); toast("Couldn't save: "+(e.message||e)); } };
@@ -1115,35 +1118,40 @@ function guessSpool(color){
   return best || S.spools[0].id;
 }
 /* Opens the file picker, shows what was found, lets the person match colours to spools. onApply gets {units, seconds, items:[{spoolId, grams}], name} for the whole plate. */
-function pickBambu(onApply, purpose){
+function pickBambu(onApply, purpose, canAdd){
   const inp = document.createElement("input"); inp.type = "file";
-  inp.onchange = async () => { const f = inp.files[0]; if (!f) return; await bambuFromFile(f, onApply, purpose); };
+  inp.onchange = async () => { const f = inp.files[0]; if (!f) return; await bambuFromFile(f, onApply, purpose, canAdd); };
   inp.click();
 }
-async function bambuFromFile(f, onApply, purpose){
+async function bambuFromFile(f, onApply, purpose, canAdd){
   let info;
   try{ toast("Reading "+f.name+"…"); info = await parseBambu(f); }
   catch(e){ toast(e.message || "Couldn't read that file."); return; }
   const showPlate = pi => {
     $("#toastRoot").innerHTML = "";
-    const pl = info.plates[pi], units = Math.max(1, pl.objects.length), total = pl.fils.reduce((a,x)=>a+x.grams,0);
+    const pl = info.plates[pi], units = Math.max(1, pl.objects.length), total = pl.fils.reduce((a,x)=>a+x.grams,0), add = !!(canAdd && canAdd());
     modal2("From Bambu Studio", `<p class="meta" style="margin-top:0">${esc(info.name)}</p>
       ${info.plates.length > 1 ? `<label class="f" style="margin-bottom:10px">Plate<select id="bb_plate">${info.plates.map((x,i)=>`<option value="${i}" ${i===pi?"selected":""}>Plate ${esc(x.index)}</option>`).join("")}</select></label>` : ""}
       <div class="calc" style="margin-bottom:12px"><div>Print time<b>${hrs(pl.seconds/60)}</b></div><div>Filament<b>${g(total)} g</b></div><div>Pieces on plate<b>${pl.objects.length || "?"}</b></div></div>
       <div class="eyebrow" style="margin-bottom:6px">Match each colour to a spool</div>
       <div class="list" style="gap:8px">${pl.fils.map((x,i)=>`<div class="mat" style="grid-template-columns:auto minmax(0,1fr) auto"><span class="sw" style="background:${hex(x.color)};width:18px;height:18px"></span><select data-bb="${i}" aria-label="Spool for ${esc(x.color)} ${esc(x.type)}">${S.spools.map(sp=>`<option value="${sp.id}" ${sp.id===guessSpool(x.color)?"selected":""}>${esc(sp.name.trim())} · ${g(sp.remaining)} g left</option>`).join("")}</select><span class="num" style="font-weight:600">${g(x.grams)} g</span></div>`).join("")}</div>
-      <label class="f" style="margin-top:12px">${purpose === "recipe" ? "Pieces on this plate (the recipe is per piece)" : "Pieces on this plate"}<input id="bb_units" type="number" min="1" value="${units}"></label>
+      <label class="f" style="margin-top:12px" ${purpose === "print" && add ? 'data-unitsf' : ""}>${purpose === "recipe" ? "Pieces on this plate (the recipe is per piece)" : "Pieces on this plate"}<input id="bb_units" type="number" min="1" value="${units}"></label>
+      ${add ? `<div class="alert warn" style="margin-top:10px">${purpose === "recipe" ? "This product already has a recipe. If it's printed from two files (for example the body and the lid), choose <b>Add to recipe</b> to combine them." : "This print already has a file. If the product needs a second file, choose <b>Add to this print</b> to combine them."}</div>` : ""}
       <p class="meta">Weights include colour-change waste and the prime tower, as Bambu Studio counts them.</p>
-      <div class="foot"><button class="btn" data-x2>Cancel</button><button class="btn primary" id="bb_ok">${purpose === "recipe" ? "Use as recipe" : "Fill in this print"}</button></div>`, m => {
+      <div class="foot" style="flex-wrap:wrap"><button class="btn" data-x2>Cancel</button>${add ? `<button class="btn" id="bb_ok">${purpose === "recipe" ? "Replace recipe" : "Replace"}</button><button class="btn primary" id="bb_add">${purpose === "recipe" ? "Add to recipe" : "Add to this print"}</button>` : `<button class="btn primary" id="bb_ok">${purpose === "recipe" ? "Use as recipe" : "Fill in this print"}</button>`}</div>`, m => {
       m.querySelector("[data-x2]").onclick = close2;
       const ps = $("#bb_plate"); if (ps) ps.onchange = () => showPlate(+ps.value);
-      $("#bb_ok").onclick = () => {
+      const uf = m.querySelector("[data-unitsf]"); if (uf) uf.insertAdjacentHTML("beforeend", `<span style="font-weight:400">Used only if you replace. Adding keeps the number of pieces from the first file.</span>`);
+      const go = mode => {
         const map = {}, cm = Object.assign({}, S.settings.colorMap||{});
         pl.fils.forEach((x,i) => { const sid = m.querySelector(`[data-bb="${i}"]`).value; map[sid] = (map[sid]||0) + x.grams; if (x.color) cm[x.color.toLowerCase()] = sid; });
         S.settings.colorMap = cm; persist("settings");
+        const u = Math.max(1, Math.round(n($("#bb_units")?.value)||units));
         close2();
-        onApply({units:Math.max(1, Math.round(n($("#bb_units")?.value)||units)), seconds:pl.seconds, name:info.name, items:Object.entries(map).map(([spoolId, grams]) => ({spoolId, grams:Math.round(grams*100)/100}))});
+        onApply({units:u, seconds:pl.seconds, name:info.name, items:Object.entries(map).map(([spoolId, grams]) => ({spoolId, grams:Math.round(grams*100)/100}))}, mode);
       };
+      $("#bb_ok").onclick = () => go("replace");
+      const ab = $("#bb_add"); if (ab) ab.onclick = () => go("add");
     });
   };
   if (!info.plates.some(p => p.fils.length)) return toast("No filament use found in that file. Slice the plate and export it again.");
@@ -1151,10 +1159,10 @@ async function bambuFromFile(f, onApply, purpose){
 }
 function bambuDrop(id, label){ return `<div class="drop full" id="${id}"><span>${label}</span><button class="btn sm" type="button" data-bbpick>Choose file</button></div>`; }
 function wireDrop(el, handler){
-  if (!el) return; el.querySelector("[data-bbpick]").onclick = () => pickBambu(handler.apply, handler.purpose);
+  if (!el) return; el.querySelector("[data-bbpick]").onclick = () => pickBambu(handler.apply, handler.purpose, handler.canAdd);
   el.addEventListener("dragover", e => { e.preventDefault(); el.classList.add("over"); });
   el.addEventListener("dragleave", () => el.classList.remove("over"));
-  el.addEventListener("drop", e => { e.preventDefault(); el.classList.remove("over"); const f = e.dataTransfer.files[0]; if (f) bambuFromFile(f, handler.apply, handler.purpose); });
+  el.addEventListener("drop", e => { e.preventDefault(); el.classList.remove("over"); const f = e.dataTransfer.files[0]; if (f) bambuFromFile(f, handler.apply, handler.purpose, handler.canAdd); });
 }
 
 function printForm(pid, qty0){
@@ -1183,11 +1191,18 @@ function printForm(pid, qty0){
       $("#rcalc").innerHTML = `<div>Filament<b>${g(r.usage.reduce((a,u)=>a+u.grams,0))} g</b></div><div>Batch cost<b>${money(c)}</b></div><div>Per unit<b>${money(c/r.qty)}</b></div><div>Stock after<b>${n(p.stock)+r.goodQty}</b></div>${r.progress<100?`<div class="full" style="grid-column:1/-1">Counting ${r.progress}% of the filament and time: ${g(r.usage.reduce((a,u)=>a+u.grams,0))} g, ${hrs(r.minutes)}.</div>`:""}${over?`<div class="full alert bad" style="grid-column:1/-1">${esc(spool(over.id).name.trim())} only has ${g(spool(over.id).remaining)} g left.</div>`:""}`; };
     $("#r_p").onchange = fill; $("#r_qty").oninput = () => { fill(); syncResult(m); }; m.addEventListener("input", e => { if (e.target.id!=="r_qty") calc(); }); m.addEventListener("change", () => { syncResult(m); calc(); });
     fill(); syncResult(m);
-    wireDrop($("#r_bb"), {purpose:"print", apply: r => {
+    let fromFile = false;
+    wireDrop($("#r_bb"), {purpose:"print", canAdd: () => fromFile, apply: (r, mode) => {
+      if (mode === "add"){
+        setDur("r_min", n($("#r_min").value) + r.seconds/60);
+        r.items.forEach(it => { const i = m.querySelector(`[data-use="${it.spoolId}"]`); if (i){ i.value = Math.round((n(i.value) + it.grams)*100)/100; const d = i.closest("details"); if (d) d.open = true; } });
+        $("#r_notes").value = ($("#r_notes").value ? $("#r_notes").value + " + " : "From ") + r.name;
+        syncResult(m); calc(); toast("Added " + r.name + " to this print"); return;
+      }
       $("#r_qty").value = r.units; setDur("r_min", r.seconds/60);
       m.querySelectorAll("[data-use]").forEach(i => { i.value = 0; });
       r.items.forEach(it => { const i = m.querySelector(`[data-use="${it.spoolId}"]`); if (i){ i.value = it.grams; const d = i.closest("details"); if (d) d.open = true; } });
-      if (!$("#r_notes").value) $("#r_notes").value = "From " + r.name;
+      $("#r_notes").value = "From " + r.name; fromFile = true;
       syncResult(m); calc(); toast("Filled from " + r.name);
     }});
     m.querySelector("[data-x]").onclick = close;
