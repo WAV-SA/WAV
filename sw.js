@@ -1,4 +1,4 @@
-const CACHE = "wav-v8";
+const CACHE = "wav-v9";
 const CORE = ["./", "index.html", "manifest.webmanifest", "icons/apple-touch-icon.png", "icons/icon-192.png", "icons/icon-512.png"];
 const FONT_CSS = "https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap";
 

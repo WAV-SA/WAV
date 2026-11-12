@@ -122,6 +122,10 @@ tbody tr:hover{background:var(--sunk)}
 
 /* modal */
 #modal2Root .scrim{z-index:45}
+.dur{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.dur label{position:relative;display:block}
+.dur label span{position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:13px;font-weight:500;pointer-events:none}
+.dur input{padding-right:40px}
 .drop{border:1.5px dashed var(--line);border-radius:10px;padding:12px 14px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;color:var(--muted);font-size:13px}
 .drop.over{border-color:var(--accent);background:var(--accent-soft)}
 .scrim{position:fixed;inset:0;background:color-mix(in srgb,#000 45%,transparent);display:flex;align-items:center;justify-content:center;padding:16px;z-index:40}
@@ -244,7 +248,7 @@ body.ro [data-count]{border-color:transparent;background:transparent}
 <script>
 (() => {
 const KEYS = ["products","spools","prints","orders","moves","fil","ideas","lessons","settings","trash"];
-const APP_VERSION = "2026.11.12b";
+const APP_VERSION = "2026.11.12c";
 const blank = () => ({products:[],spools:[],prints:[],orders:[],moves:[],fil:[],ideas:[],lessons:[],settings:{hour:2,energy:0.2,wear:0,failAllow:true,workspace:"WAV",currency:"SAR",feePct:0,packaging:0,targetMargin:50},trash:[]});
 let S = blank();
 let view = "home", db = null, mode = "local", loaded = false, filter = {};
@@ -977,7 +981,7 @@ function productForm(p){
     <div class="f full"><span>Category</span><div class="seg" role="radiogroup" aria-label="Category" style="grid-template-columns:repeat(2,minmax(0,1fr))">${CATS.map(([k,l])=>`<label class="${k==="final"?"ok":""}"><input type="radio" name="p_cat" value="${k}" ${catOf(p)===k?"checked":""}>${l}<small>${k==="final"?"ready to sell":"still testing"}</small></label>`).join("")}</div></div>
     ${bambuDrop("p_bb", "Fill the recipe from a Bambu Studio sliced file")}
     <div class="full"><div class="eyebrow" style="margin-bottom:6px">Filament per unit (g)</div><div class="list" id="mats" style="gap:6px">${p.materials.map(matRow).join("")}</div><button class="btn sm" id="addMat" style="margin-top:6px">Add colour</button></div>
-    <label class="f">Print time (min)<input id="p_min" type="number" value="${n(p.minutes)}"></label>
+    ${durField("p_min", p.minutes, "Print time per piece")}
     <label class="f">Extras per unit (${cur()})<input id="p_ext" type="number" step="0.01" value="${n(p.extras)}"></label>
     <label class="f">Sale price (${cur()})<input id="p_price" type="number" step="0.01" value="${n(p.price)}"></label>
     <label class="f">Minimum stock<input id="p_minst" type="number" value="${n(p.min)}"></label>
@@ -993,7 +997,7 @@ function productForm(p){
     $("#addMat").onclick = () => { $("#mats").insertAdjacentHTML("beforeend", matRow({spoolId:S.spools[0]?.id, grams:0}, Date.now())); wire(); };
     wireDrop($("#p_bb"), {purpose:"recipe", apply: r => {
       $("#mats").innerHTML = r.items.map((it,i) => matRow({spoolId:it.spoolId, grams:Math.round(it.grams/r.units*100)/100}, i)).join(""); wire();
-      $("#p_min").value = Math.round(r.seconds/60/r.units); $("#p_flush").value = 0;
+      setDur("p_min", r.seconds/60/r.units); $("#p_flush").value = 0;
       calc(); toast(`Recipe set per piece from ${r.units} on the plate. Colour-change waste is already included.`);
     }});
     m.querySelector("[data-x]").onclick = close;
@@ -1001,6 +1005,21 @@ function productForm(p){
     if (!isNew) $("#pdel").onclick = () => { close(); trash("products", product(p.id)); render(); };
   });
 }
+
+/* ---------- duration field: hours + minutes, keeps total minutes in a hidden input ---------- */
+function durField(id, minutes, label){
+  const t = Math.max(0, Math.round(n(minutes)));
+  return `<div class="f"><span>${label}</span><div class="dur" data-dur="${id}"><label><input id="${id}_h" type="number" min="0" inputmode="numeric" value="${Math.floor(t/60)}" aria-label="${label} hours"><span>h</span></label><label><input id="${id}_m" type="number" min="0" max="59" inputmode="numeric" value="${t%60}" aria-label="${label} minutes"><span>min</span></label><input type="hidden" id="${id}" value="${t}"></div></div>`;
+}
+function setDur(id, minutes){
+  const t = Math.max(0, Math.round(n(minutes))), h = $("#"+id+"_h"), m = $("#"+id+"_m"), x = $("#"+id);
+  if (h) h.value = Math.floor(t/60); if (m) m.value = t%60; if (x) x.value = t;
+}
+document.addEventListener("input", e => {
+  const w = e.target.closest && e.target.closest(".dur"); if (!w) return;
+  const id = w.dataset.dur, h = n($("#"+id+"_h").value), m = n($("#"+id+"_m").value);
+  $("#"+id).value = Math.max(0, Math.round(h*60 + m));
+}, true);
 
 /* ---------- Bambu Studio sliced files ---------- */
 function modal2(title, body, onMount){
@@ -1147,13 +1166,13 @@ function printForm(pid, qty0){
     <label class="f full">Product<select id="r_p">${S.products.map(x=>`<option value="${x.id}" ${x.id===p.id?"selected":""}>${esc(x.name)} · ${esc(x.type)}</option>`).join("")}</select></label>
     <label class="f">Date<input id="r_date" type="date" value="${today()}"></label>
     <label class="f">Units in this print<input id="r_qty" type="number" min="1" value="${n(qty0)||1}"></label>
-    <label class="f">Print time (min)<input id="r_min" type="number" value="${n(p.minutes)}"></label>
+    ${durField("r_min", p.minutes, "Print time")}
     <div class="full"><div class="eyebrow" style="margin-bottom:6px">How did it go?</div>${resultFields(1)}</div>
     <div class="full"><div class="eyebrow" style="margin-bottom:6px">Filament used (g) – filled from the recipe, adjust to the slicer or scale</div><div id="r_use" class="list" style="gap:6px"></div></div>
     <label class="f full">Notes<input id="r_notes" placeholder="e.g. layer shift at 40%"></label>
     <div class="full calc" id="rcalc"></div>
   </div><div class="foot"><button class="btn" data-x>Cancel</button><button class="btn primary" id="rsave">Save print</button></div>`, m => {
-    const fill = () => { p = product($("#r_p").value); const q = n($("#r_qty").value)||1; $("#r_min").value = n(p.minutes)*q;
+    const fill = () => { p = product($("#r_p").value); const q = n($("#r_qty").value)||1; setDur("r_min", n(p.minutes)*q);
       const rows = usageRows(p,q).filter(u=>u.grams>0); const used = new Set(rows.map(r=>r.id));
       $("#r_use").innerHTML = rows.map(u=>useRow(u)).join("") + `<details><summary class="meta" style="cursor:pointer">Other spools</summary><div class="list" style="gap:6px;margin-top:6px">${S.spools.filter(s=>!used.has(s.id)).map(s=>useRow({id:s.id,grams:0})).join("")}</div></details>`; calc(); };
     const useRow = u => { const s=spool(u.id); return `<div class="mat" style="grid-template-columns:minmax(0,1fr) 100px"><span class="row" style="gap:8px;min-width:0"><span class="sw" style="background:${hex(s.color)}"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.name.trim())}</span><span class="meta num">${g(s.remaining)} left</span></span><input type="number" step="0.01" min="0" data-use="${s.id}" value="${u.grams}" aria-label="Grams of ${esc(s.name)}"></div>`; };
@@ -1165,7 +1184,7 @@ function printForm(pid, qty0){
     $("#r_p").onchange = fill; $("#r_qty").oninput = () => { fill(); syncResult(m); }; m.addEventListener("input", e => { if (e.target.id!=="r_qty") calc(); }); m.addEventListener("change", () => { syncResult(m); calc(); });
     fill(); syncResult(m);
     wireDrop($("#r_bb"), {purpose:"print", apply: r => {
-      $("#r_qty").value = r.units; $("#r_min").value = Math.round(r.seconds/60);
+      $("#r_qty").value = r.units; setDur("r_min", r.seconds/60);
       m.querySelectorAll("[data-use]").forEach(i => { i.value = 0; });
       r.items.forEach(it => { const i = m.querySelector(`[data-use="${it.spoolId}"]`); if (i){ i.value = it.grams; const d = i.closest("details"); if (d) d.open = true; } });
       if (!$("#r_notes").value) $("#r_notes").value = "From " + r.name;
