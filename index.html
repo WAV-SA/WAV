@@ -148,6 +148,9 @@ textarea{min-height:80px;resize:vertical}
 .seg label.ok:has(input:checked){border-color:var(--good);background:var(--good-soft)}
 .seg label.ko:has(input:checked){border-color:var(--bad);background:var(--bad-soft)}
 .seg label:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.upd{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);z-index:60;background:var(--surface);border:1px solid var(--accent);border-radius:12px;padding:10px 12px 10px 16px;display:flex;gap:12px;align-items:center;box-shadow:0 8px 24px color-mix(in srgb,var(--ink) 18%,transparent);width:max-content;max-width:calc(100% - 32px);font-weight:500}
+.xbtn{all:unset;cursor:pointer;font-size:12px;font-weight:600;color:var(--accent);margin-top:6px}
+.name,.meta,.note p,textarea,input{unicode-bidi:plaintext}
 .stepper{display:flex;align-items:center;gap:4px}
 .stepper input{width:64px;text-align:center;padding:5px 4px}
 .alert{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:8px;font-size:13px}
@@ -206,6 +209,8 @@ body.ro [data-count]{border-color:transparent;background:transparent}
   .tablewrap td:first-child::before,.tablewrap td[data-label=""]::before{content:none}
   .tablewrap td[data-label=""]{justify-content:flex-end;padding-top:8px}
   .tablewrap td.meta{max-width:none!important}
+  .tablewrap tr.cx:not(.open) td:not(:first-child):not(.k):not([data-label=""]){display:none}
+  .tablewrap tr.cx td:first-child{border-bottom-style:solid}
   .stepper .btn{width:40px;height:36px;font-size:18px;padding:0}
   .btn.sm{padding:7px 12px}
   .strip .kv{font-size:19px}
@@ -228,13 +233,15 @@ body.ro [data-count]{border-color:transparent;background:transparent}
   <main id="main"></main>
 </div>
 <button class="fab" id="fab" aria-label="Quick add">+</button>
+<div id="updRoot"></div>
 <div id="modalRoot"></div>
 <div id="toastRoot"></div>
 
 <script>
 (() => {
-const KEYS = ["products","spools","prints","orders","moves","ideas","lessons","settings","trash"];
-const blank = () => ({products:[],spools:[],prints:[],orders:[],moves:[],ideas:[],lessons:[],settings:{hour:2,energy:0.2,workspace:"WAV",currency:"SAR",feePct:0,packaging:0,targetMargin:50},trash:[]});
+const KEYS = ["products","spools","prints","orders","moves","fil","ideas","lessons","settings","trash"];
+const APP_VERSION = "2026.11.12";
+const blank = () => ({products:[],spools:[],prints:[],orders:[],moves:[],fil:[],ideas:[],lessons:[],settings:{hour:2,energy:0.2,wear:0,failAllow:true,workspace:"WAV",currency:"SAR",feePct:0,packaging:0,targetMargin:50},trash:[]});
 let S = blank();
 let view = "home", db = null, mode = "local", loaded = false, filter = {};
 const LS = "wav-app-v1";
@@ -253,18 +260,35 @@ const hrs = m => { m = n(m); const h = Math.floor(m/60), r = Math.round(m%60); r
 const spool = id => S.spools.find(s => s.id === id);
 const product = id => S.products.find(p => p.id === id);
 const ppg = s => s && n(s.initial) ? n(s.price)/n(s.initial) : 0;
-const runRate = () => n(S.settings.hour) + n(S.settings.energy);
+const runRate = () => n(S.settings.hour) + n(S.settings.energy) + n(S.settings.wear);
 
 function materialCost(materials){ return (materials||[]).reduce((a,m)=>a + n(m.grams)*ppg(spool(m.spoolId ?? m.id)), 0); }
-function unitCost(p){ return materialCost(p.materials) + n(p.minutes)/60*runRate() + n(p.extras); }
+function recipePpg(p){ const ms = (p.materials||[]).filter(m=>n(m.grams)>0), tot = ms.reduce((a,m)=>a+n(m.grams),0);
+  if (tot) return ms.reduce((a,m)=>a+n(m.grams)*ppg(spool(m.spoolId)),0)/tot;
+  const sp = S.spools.filter(x=>n(x.initial)); return sp.length ? sp.reduce((a,x)=>a+ppg(x),0)/sp.length : 0; }
+function failRate(){
+  let units = 0, good = 0; S.prints.forEach(pr => { units += n(pr.qty)||1; good += goodOf(pr); });
+  return units >= 5 ? Math.max(0, Math.min(0.5, 1 - good/units)) : 0;
+}
+function costParts(p){
+  const fil = materialCost(p.materials), flush = n(p.flush)*recipePpg(p), time = n(p.minutes)/60*runRate();
+  const fr = S.settings.failAllow === false ? 0 : failRate(), fail = (fil+flush+time) * (fr/(1-fr));
+  return {fil, flush, time, fail, fr, extras:n(p.extras), total: fil+flush+time+fail+n(p.extras)};
+}
+function unitCost(p){ return costParts(p).total; }
+/* grams per unit by spool, with AMS flush waste shared in proportion to the recipe */
+function unitGrams(p){
+  const ms = (p.materials||[]).filter(m=>n(m.grams)>0), tot = ms.reduce((a,m)=>a+n(m.grams),0);
+  return ms.map(m => ({spoolId:m.spoolId, grams: n(m.grams) + (tot ? n(p.flush)*n(m.grams)/tot : 0)}));
+}
 function bomGrams(p){ const s = (p.materials||[]).reduce((a,m)=>a+n(m.grams),0); return s || n(p.grams); }
 function spoolState(s){ const r = n(s.remaining); if (r <= 0) return "bad"; if (r < n(s.min)) return "warn"; return "good"; }
 function stockState(p){ const s = n(p.stock); if (s <= 0) return "bad"; if (s < n(p.min)) return "warn"; return "good"; }
 function hex(c){ return /^#[0-9a-f]{3,8}$/i.test(c||"") ? c : "#888888"; }
 
 /* ---------- persistence ---------- */
-function saveLocal(){ try{ localStorage.setItem(LS, JSON.stringify(S)); }catch(e){} }
-function loadLocal(){ try{ const t = localStorage.getItem(LS); if (t) S = Object.assign(blank(), JSON.parse(t)); }catch(e){} }
+function saveLocal(){ recompute(); try{ localStorage.setItem(LS, JSON.stringify(S)); }catch(e){} }
+function loadLocal(){ try{ const t = localStorage.getItem(LS); if (t){ S = Object.assign(blank(), JSON.parse(t)); S.settings = Object.assign(blank().settings, S.settings||{}); KEYS.forEach(k => { if (k!=="settings" && !Array.isArray(S[k])) S[k] = []; }); } }catch(e){} if (ensureLedger()) saveLocal(); recompute(); }
 const pending = new Map();
 async function persist(...keys){
   saveLocal(); schedulePush();
@@ -317,7 +341,7 @@ async function pullRemote(){
   return {sha:j.sha, data:JSON.parse(text)};
 }
 async function pushRemote(){
-  const body = {message:"WAV sync "+new Date().toISOString(), content:b64e(JSON.stringify(S))};
+  recompute(); const body = {message:"WAV sync "+new Date().toISOString(), content:b64e(JSON.stringify(S))};
   if (SY.sha) body.sha = SY.sha;
   const r = await ghFetch("/contents/data.json", {method:"PUT", body:JSON.stringify(body)});
   if (r.status === 409 || r.status === 422) return {conflict:true};
@@ -329,7 +353,7 @@ function mergeState(Lc, Rc){
   const tmap = new Map(); [...Rm.trash, ...L.trash].forEach(t => tmap.set(t.id, t));
   const deadAt = {}; tmap.forEach(t => { const id = t.record && t.record.id; if (id) deadAt[id] = Math.max(deadAt[id]||0, Date.parse(t.deletedAt)||0); });
   const alive = x => x && (!(x.id in deadAt) || (Date.parse(x._restoredAt)||0) > deadAt[x.id]);
-  ["products","spools","prints","orders","moves","ideas","lessons"].forEach(k => {
+  ["products","spools","prints","orders","moves","fil","ideas","lessons"].forEach(k => {
     const m = new Map(); Rm[k].forEach(x => m.set(x.id, x)); L[k].forEach(x => m.set(x.id, x));
     const seen = new Set(), list = [];
     L[k].forEach(x => { if (!seen.has(x.id)){ seen.add(x.id); list.push(m.get(x.id)); } });
@@ -337,14 +361,14 @@ function mergeState(Lc, Rc){
     out[k] = list.filter(alive);
   });
   const by = f => (a,b) => String(b[f]||"").localeCompare(String(a[f]||""));
-  out.prints.sort(by("date")); out.orders.sort(by("created")); out.moves.sort(by("at")); out.moves = out.moves.slice(0,500);
-  out.trash = [...tmap.values()].filter(t => { const id = t.record && t.record.id; return !(out[t.kind]||[]).some(x => x.id === id); }).sort(by("deletedAt")).slice(0,60);
+  out.prints.sort(by("date")); out.orders.sort(by("created")); out.moves.sort(by("at")); out.fil.sort(by("at"));
+  out.trash = [...tmap.values()].filter(t => { const id = t.record && t.record.id; return !(out[t.kind]||[]).some(x => x.id === id); }).sort(by("deletedAt")).slice(0,300);
   out.settings = Object.assign({}, Rm.settings, L.settings);
   const lbs = [L.settings.lastBackup, Rm.settings.lastBackup].filter(Boolean).sort(); if (lbs.length) out.settings.lastBackup = lbs.pop();
   return out;
 }
 let applyingRemote = false;
-function takeRemote(d){ applyingRemote = true; S = normalize(d); saveLocal(); applyingRemote = false; render(); }
+function takeRemote(d){ applyingRemote = true; S = normalize(d); const ch = ensureLedger(); recompute(); saveLocal(); applyingRemote = false; render(); if (ch) persist("moves","fil","settings"); }
 function schedulePush(){
   if (applyingRemote || !syncOn() || SY.readonly) return;
   changeSeq++; SY.dirty = true; saveSY();
@@ -455,6 +479,35 @@ async function connectSync(owner, repo, token, readonly){
     });
   }catch(e){ SY = {}; saveSY(); showSync(); toast(e.message); render(); }
 }
+async function listVersions(){
+  const r = await ghFetch("/commits?path=data.json&per_page=50"); if (!r.ok) throw ghError(r);
+  return (await r.json()).map(c => ({sha:c.sha, date:(c.commit && (c.commit.committer||c.commit.author||{}).date) || ""}));
+}
+async function getVersion(sha){
+  const r = await ghFetch("/contents/data.json?ref="+encodeURIComponent(sha)); if (!r.ok) throw ghError(r);
+  const j = await r.json(); return JSON.parse(j.content ? b64d(j.content) : await (await fetch(j.download_url, {cache:"no-store"})).text());
+}
+function summarize(d){ const x = normalize(d); return `${x.products.length} products · ${x.spools.length} spools · ${x.prints.length} prints · ${x.orders.length} orders`; }
+async function historyForm(){
+  modal("Version history", `<p class="meta">Every change you save is kept on GitHub. Pick a time to see what was there, then restore it if you need to.</p><div id="vh" class="list" style="gap:0"><p class="meta">Loading…</p></div><div class="foot"><button class="btn" data-x>Close</button></div>`, async m => {
+    m.querySelector("[data-x]").onclick = close;
+    try{
+      const vs = await listVersions();
+      const fmt = iso => new Date(iso).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
+      $("#vh").innerHTML = vs.length ? vs.map((v,i) => `<div class="item"><div><div class="name">${fmt(v.date)}${i===0?` <span class="pill good">Current</span>`:""}</div><div class="meta" data-sum="${v.sha}"></div></div>${i===0?"":`<button class="btn sm" data-ver="${v.sha}">View</button>`}</div>`).join("") : `<p class="meta">No saved versions yet.</p>`;
+      m.querySelectorAll("[data-ver]").forEach(b => b.onclick = async () => {
+        b.disabled = true; b.textContent = "Loading…";
+        try{
+          const d = await getVersion(b.dataset.ver);
+          m.querySelector(`[data-sum="${b.dataset.ver}"]`).textContent = summarize(d);
+          b.disabled = false; b.textContent = "Restore"; b.classList.add("primary");
+          b.onclick = () => { close(); confirmBox(`Replace your current data (${summarize(S)}) with this version (${summarize(d)})? The current data stays in the history, so you can switch back.`, "Restore", () => {
+            S = normalize(d); ensureLedger(); recompute(); persist(...KEYS); render(); toast("Version restored"); }); };
+        }catch(e){ b.disabled = false; b.textContent = "View"; toast(e.message); }
+      });
+    }catch(e){ $("#vh").innerHTML = `<div class="alert bad">${esc(e.message)}</div>`; }
+  });
+}
 function disconnectSync(){ SY = {}; saveSY(); showSync(); render(); toast("Sync turned off on this device. Your data stays here."); }
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") syncNow(); });
 window.addEventListener("online", () => syncNow());
@@ -482,12 +535,50 @@ async function boot(){
 }
 
 /* ---------- business logic ---------- */
+/* Stock and filament are worked out from records, never stored as a bare number:
+   product stock = starting balance + manual adjustments + good units printed - units in delivered orders
+   spool grams   = starting balance + weigh-ins/adjustments - grams used by prints
+   Records merge cleanly between devices, and deleting a print or order reverses its effect. */
+function goodOf(pr){ return pr.goodQty !== undefined ? n(pr.goodQty) : (pr.good ? n(pr.qty) : 0); }
+function ensureLedger(){
+  let changed = false; const now = new Date().toISOString();
+  if (!S.settings.ledgerAt){ S.settings.ledgerAt = now; changed = true; }
+  const mids = new Set(S.moves.map(m=>m.id)), fids = new Set(S.fil.map(f=>f.id));
+  S.products.forEach(p => { if (mids.has("open-"+p.id)) return;
+    let c = 0; S.prints.forEach(pr => { if (pr.product===p.id) c += goodOf(pr); });
+    S.orders.forEach(o => { if (o.status==="delivered") (o.items||[]).forEach(i => { if (i.product===p.id) c -= n(i.qty); }); });
+    S.moves.push({id:"open-"+p.id, product:p.id, delta:Math.round(n(p.stock)-c), opening:true, reason:"Starting balance", at:now, date:today()}); changed = true; });
+  S.spools.forEach(sp => { if (fids.has("sopen-"+sp.id)) return;
+    let u = 0; S.prints.forEach(pr => (pr.usage||[]).forEach(x => { if (x.id===sp.id) u += n(x.grams); }));
+    S.fil.push({id:"sopen-"+sp.id, spool:sp.id, delta:Math.round((n(sp.remaining)+u)*100)/100, opening:true, reason:"Starting balance", at:now}); changed = true; });
+  return changed;
+}
+function recompute(){
+  const st = {}, rem = {};
+  S.moves.forEach(m => { if (m.opening || m.adj) st[m.product] = (st[m.product]||0) + n(m.delta); });
+  S.prints.forEach(pr => { st[pr.product] = (st[pr.product]||0) + goodOf(pr); (pr.usage||[]).forEach(u => { rem[u.id] = (rem[u.id]||0) - n(u.grams); }); });
+  S.orders.forEach(o => { if (o.status==="delivered") (o.items||[]).forEach(i => { st[i.product] = (st[i.product]||0) - n(i.qty); }); });
+  S.fil.forEach(f => { rem[f.spool] = (rem[f.spool]||0) + n(f.delta); });
+  S.products.forEach(p => { p.stock = Math.round(st[p.id]||0); });
+  S.spools.forEach(sp => { sp.remaining = Math.round((rem[sp.id]||0)*100)/100; });
+}
 function logMove(pid, delta, reason, note){
   delta = Math.round(n(delta)); if (!delta) return;
-  const p = product(pid);
-  S.moves.unshift({id:uid(), date:today(), at:new Date().toISOString(), product:pid, delta, reason, note:note||"", after:p?n(p.stock):null});
-  S.moves = S.moves.slice(0,500);
+  recompute(); const p = product(pid);
+  S.moves.unshift({id:uid(), adj:true, date:today(), at:new Date().toISOString(), product:pid, delta, reason, note:note||"", after:p?n(p.stock)+delta:null});
   persist("moves");
+}
+function logFil(sid, delta, reason){
+  delta = Math.round(n(delta)*100)/100; if (!delta) return;
+  S.fil.unshift({id:uid(), adj:true, spool:sid, delta, reason, at:new Date().toISOString()});
+  persist("fil");
+}
+function stockTimeline(){
+  const since = S.settings.ledgerAt || "", out = [];
+  S.moves.forEach(m => { if (m.opening) return; out.push({at:m.at||m.date, product:m.product, delta:n(m.delta), reason:m.reason, note:m.note}); });
+  S.prints.forEach(pr => { if (pr.at && pr.at >= since && goodOf(pr)) out.push({at:pr.at, product:pr.product, delta:goodOf(pr), reason:"Printed"}); });
+  S.orders.forEach(o => { if (o.status==="delivered" && o.deliveredTs && o.deliveredTs >= since) (o.items||[]).forEach(i => out.push({at:o.deliveredTs, product:i.product, delta:-n(i.qty), reason:"Sold", note:o.customer||""})); });
+  return out.sort((a,b)=>String(b.at).localeCompare(String(a.at)));
 }
 const OPEN = ["new","printing","ready"];
 function reserved(pid){ return S.orders.filter(o=>OPEN.includes(o.status)).reduce((a,o)=>a+(o.items||[]).filter(i=>i.product===pid).reduce((b,i)=>b+n(i.qty),0),0); }
@@ -498,10 +589,7 @@ const catOf = p => p && p.category === "prototype" ? "prototype" : "final";
 const catPill = p => catOf(p) === "prototype" ? ` <span class="pill warn" style="vertical-align:1px">Prototype</span>` : ` <span class="pill good" style="vertical-align:1px">Final</span>`;
 function restockPlan(){
   return S.products.filter(p => catOf(p) === "final").map(p => { const need = Math.max(0, n(p.min) - available(p)); return {p, need}; }).filter(x=>x.need>0)
-    .map(x => ({...x, minutes:n(x.p.minutes)*x.need, mats:(x.p.materials||[]).filter(m=>n(m.grams)>0).map(m=>({spoolId:m.spoolId, grams:n(m.grams)*x.need}))}));
-}
-function deductSpools(usage, sign=-1){
-  usage.forEach(u => { const s = spool(u.id); if (s) s.remaining = Math.max(0, Math.round((n(s.remaining) + sign*n(u.grams))*100)/100); });
+    .map(x => ({...x, minutes:n(x.p.minutes)*x.need, mats:unitGrams(x.p).map(m=>({spoolId:m.spoolId, grams:m.grams*x.need}))}));
 }
 function logPrint(rec){
   const p = product(rec.product);
@@ -509,22 +597,14 @@ function logPrint(rec){
   const grams = usage.reduce((a,u)=>a+u.grams,0);
   const cost = usage.reduce((a,u)=>a+u.grams*u.pricePerGram,0) + n(rec.minutes)/60*runRate() + (p ? n(p.extras)*n(rec.qty) : 0);
   const qty = n(rec.qty)||1, goodQty = Math.max(0, Math.min(qty, Math.round(n(rec.goodQty))));
-  const pr = {id:uid(), name:p?.name||rec.name||"Print", product:rec.product, date:rec.date||today(), qty, goodQty, minutes:n(rec.minutes), grams:Math.round(grams*100)/100, usage, good:goodQty>0, failReason:goodQty<qty?(rec.failReason||""):"", notes:rec.notes||"", cost};
-  deductSpools(usage, -1);
+  const pr = {id:uid(), at:new Date().toISOString(), name:p?.name||rec.name||"Print", product:rec.product, date:rec.date||today(), qty, goodQty, minutes:n(rec.minutes), grams:Math.round(grams*100)/100, usage, good:goodQty>0, failReason:goodQty<qty?(rec.failReason||""):"", progress:goodQty===0 && rec.progress<100 ? rec.progress : undefined, notes:rec.notes||"", cost};
+  recompute();
   if (p && goodQty > 0){
-    const before = n(p.stock), unit = cost/goodQty;
+    const before = Math.max(0, n(p.stock)), unit = cost/goodQty;
     p.avgCost = before > 0 ? (n(p.avgCost)*before + unit*goodQty)/(before+goodQty) : unit;
-    p.stock = before + goodQty;
-    logMove(p.id, goodQty, "Printed");
   }
   S.prints.unshift(pr);
-  persist("prints","spools","products");
-}
-const goodOf = pr => pr.goodQty !== undefined ? n(pr.goodQty) : (pr.good ? n(pr.qty) : 0);
-function undoPrint(pr){
-  deductSpools(pr.usage||[], +1);
-  const p = product(pr.product);
-  if (p){ const b = n(p.stock); p.stock = Math.max(0, b - goodOf(pr)); logMove(p.id, p.stock-b, "Print deleted"); }
+  persist("prints","products");
 }
 function resultPill(pr){
   const gq = goodOf(pr), q = n(pr.qty)||1;
@@ -536,7 +616,7 @@ const REASONS = ["Bed adhesion / warping","Spaghetti / detached","Layer shift","
 function trash(kind, rec){
   S[kind] = S[kind].filter(x => x.id !== rec.id);
   S.trash.unshift({id:uid(), kind, record:rec, deletedAt:new Date().toISOString()});
-  S.trash = S.trash.slice(0,60);
+  S.trash = S.trash.slice(0,300);
   persist(kind,"trash");
   toast("Moved to trash", () => restore(S.trash[0]));
 }
@@ -544,7 +624,6 @@ function restore(t){
   if (!t) return;
   t.record._restoredAt = new Date().toISOString();
   S[t.kind] = [t.record, ...(S[t.kind]||[])];
-  if (t.kind === "prints"){ const pr = t.record; deductSpools(pr.usage||[], -1); const p = product(pr.product); if (p){ p.stock = n(p.stock) + goodOf(pr); logMove(p.id, goodOf(pr), "Print restored"); } persist("spools","products"); }
   S.trash = S.trash.filter(x => x.id !== t.id);
   persist(t.kind,"trash"); render(); toast("Restored");
 }
@@ -561,6 +640,7 @@ function modal(title, body, onMount){
   $("#modalRoot").innerHTML = `<div class="scrim" id="scrim"><div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}"><h3>${esc(title)}</h3>${body}</div></div>`;
   $("#scrim").addEventListener("mousedown", e => { if (e.target.id === "scrim") close(); });
   document.addEventListener("keydown", escClose);
+  $("#modalRoot").querySelectorAll('input:not([type]),input[type="text"],textarea').forEach(i => i.dir = "auto");
   onMount && onMount($("#modalRoot .modal"));
   const f = $("#modalRoot input, #modalRoot select, #modalRoot textarea"); f && f.focus();
 }
@@ -609,10 +689,15 @@ function go(v){ view = v; try{ history.replaceState(null,"","#"+v); }catch(e){} 
 
 /* ---------- views ---------- */
 function render(){
+  recompute();
   renderNav();
   const fn = {home:vHome, stock:vStock, reports:vReports, products:vProducts, prints:vPrints, spools:vSpools, orders:vOrders, notes:vNotes, settings:vSettings}[view] || vHome;
   $("#main").innerHTML = fn();
   $("#main").querySelectorAll(".tablewrap table").forEach(t => { const hs = [...t.querySelectorAll("thead th")].map(th => th.textContent.trim()); t.querySelectorAll("tbody tr").forEach(tr => [...tr.children].forEach((td,i) => td.setAttribute("data-label", hs[i]||""))); });
+  $("#main").querySelectorAll("table[data-compact] tbody tr").forEach(tr => { tr.classList.add("cx"); const td = tr.firstElementChild; if (!td) return;
+    td.insertAdjacentHTML("beforeend", `<button class="xbtn mobile-only" type="button" aria-expanded="false">Show details ▾</button>`);
+    const b = td.querySelector(".xbtn"); b.onclick = () => { const o = tr.classList.toggle("open"); b.setAttribute("aria-expanded", o); b.textContent = o ? "Hide details ▴" : "Show details ▾"; }; });
+  $("#main").querySelectorAll('input:not([type]),input[type="text"],textarea').forEach(i => i.dir = "auto");
   bind();
 }
 
@@ -663,7 +748,7 @@ function vHome(){
 }
 
 function canMake(p){
-  const mats = (p.materials||[]).filter(m=>n(m.grams)>0);
+  const mats = unitGrams(p);
   if (!mats.length) return Infinity;
   return Math.min(...mats.map(m => { const s = spool(m.spoolId); return s ? Math.floor(n(s.remaining)/n(m.grams)) : 0; }));
 }
@@ -674,13 +759,13 @@ function vProducts(){
   const list = S.products.filter(p => (pc === "all" || catOf(p) === pc) && (!q || (p.name+" "+p.type).toLowerCase().includes(q)));
   const cnt = k => S.products.filter(p => catOf(p) === k).length;
   return head("Products", "Cost is filament + printer time + extras. Prototypes are left out of the restock plan.", `<div class="tabs">${[["all","All "+S.products.length],["final","Final "+cnt("final")],["prototype","Prototype "+cnt("prototype")]].map(([k,l])=>`<button data-pc="${k}" aria-pressed="${pc===k}">${l}</button>`).join("")}</div><input id="pq" placeholder="Search" value="${esc(filter.p||"")}" style="width:180px"><button class="btn primary" data-act="newProduct">Add product</button>`) +
-  (list.length ? `<div class="tablewrap"><table><thead><tr><th>Product</th><th>Filament</th><th class="r">Print</th><th class="r">Unit cost</th><th class="r">Price</th><th class="r">Margin</th><th class="r">Stock</th><th></th></tr></thead><tbody>${list.map(p=>{
+  (list.length ? `<div class="tablewrap"><table data-compact><thead><tr><th>Product</th><th>Filament</th><th class="r">Print</th><th class="r">Unit cost</th><th class="r">Price</th><th class="r">Margin</th><th class="r">Stock</th><th></th></tr></thead><tbody>${list.map(p=>{
     const c = unitCost(p), m = n(p.price)?(n(p.price)-c)/n(p.price)*100:0, st = stockState(p);
     return `<tr><td><div class="name">${esc(p.name)}${catPill(p)}</div><div class="meta">${esc(p.type)}</div></td>
     <td><div class="swrow">${(p.materials||[]).map(mm=>{const s=spool(mm.spoolId);return `<span class="sw" title="${esc(s?.name||"?")} ${g(mm.grams)} g" style="background:${hex(s?.color)}"></span>`}).join("")}<span class="meta num" style="margin-left:6px">${g(bomGrams(p))} g</span></div></td>
     <td class="r num">${hrs(p.minutes)}</td><td class="r num">${money(c)}</td><td class="r num">${money(p.price)}</td>
-    <td class="r"><span class="pill ${m>=50?"good":m>=25?"warn":"bad"}">${Math.round(m)}%</span></td>
-    <td class="r"><span class="pill ${st}">${n(p.stock)} / ${n(p.min)}</span></td>
+    <td class="r k"><span class="pill ${m>=50?"good":m>=25?"warn":"bad"}">${Math.round(m)}%</span></td>
+    <td class="r k"><span class="pill ${st}">${n(p.stock)} / ${n(p.min)}</span></td>
     <td class="r"><div class="row" style="justify-content:flex-end;flex-wrap:nowrap"><button class="btn sm" data-print="${p.id}">Print</button><button class="btn sm ghost" data-editp="${p.id}">Edit</button></div></td></tr>`;}).join("")}</tbody></table></div>`
   : `<div class="empty">${q?"No products match.":"No products yet."}</div>`);
 }
@@ -690,12 +775,12 @@ function vPrints(){
   const list = S.prints.filter(p => f==="all" || (f==="good" ? goodOf(p)>=(n(p.qty)||1) : goodOf(p)<(n(p.qty)||1)));
   const waste = S.prints.reduce((a,p)=>{ const q=n(p.qty)||1; return a + n(p.grams)*(q-goodOf(p))/q; },0);
   return head("Print log", `${S.prints.length} prints · ${g(S.prints.reduce((a,p)=>a+n(p.grams),0))} g used · ${g(waste)} g wasted on failures`, `<div class="tabs">${[["all","All"],["good","Success"],["bad","Failed / partial"]].map(([k,l])=>`<button data-prf="${k}" aria-pressed="${f===k}">${l}</button>`).join("")}</div><button class="btn primary" data-act="newPrint">Log a print</button>`) +
-  (list.length ? `<div class="tablewrap"><table><thead><tr><th>Date</th><th>Product</th><th class="r">Qty</th><th>Filament used</th><th class="r">Time</th><th class="r">Cost</th><th>Result</th><th>Notes</th><th></th></tr></thead><tbody>${list.map(pr=>{
+  (list.length ? `<div class="tablewrap"><table data-compact><thead><tr><th>Date</th><th>Product</th><th class="r">Qty</th><th>Filament used</th><th class="r">Time</th><th class="r">Cost</th><th>Result</th><th>Notes</th><th></th></tr></thead><tbody>${list.map(pr=>{
     const p = product(pr.product);
     const mismatch = p && pr.name && pr.name !== p.name;
     return `<tr><td class="num">${fmtDate(pr.date)}</td><td><div class="name">${esc(p?.name||pr.name)}</div><div class="meta">${esc(p?.type||"Deleted product")}${mismatch?` · logged as “${esc(pr.name)}”`:""}</div></td><td class="r num">${n(pr.qty)}</td>
     <td><div class="swrow">${(pr.usage||[]).filter(u=>n(u.grams)>0).map(u=>{const s=spool(u.id);return `<span class="sw" title="${esc(s?.name||u.name||"")}" style="background:${hex(s?.color||u.color)}"></span>`}).join("")}<span class="num meta" style="margin-left:6px">${g(pr.grams)} g</span></div></td>
-    <td class="r num">${hrs(pr.minutes)}</td><td class="r num">${money(pr.cost)}</td><td><button class="btn ghost sm" data-res="${pr.id}" title="Change result" style="padding:0">${resultPill(pr)}</button>${pr.failReason?`<div class="meta">${esc(pr.failReason)}</div>`:""}</td><td class="meta" style="max-width:220px">${esc(pr.notes)}</td>
+    <td class="r num">${hrs(pr.minutes)}</td><td class="r num">${money(pr.cost)}</td><td class="k"><button class="btn ghost sm" data-res="${pr.id}" title="Change result" style="padding:0">${resultPill(pr)}</button>${pr.failReason?`<div class="meta">${esc(pr.failReason)}</div>`:""}</td><td class="meta" style="max-width:220px">${esc(pr.notes)}</td>
     <td class="r"><button class="btn sm ghost danger" data-delpr="${pr.id}">Delete</button></td></tr>`;}).join("")}</tbody></table></div>`
   : `<div class="empty">No prints here yet.</div>`);
 }
@@ -722,20 +807,20 @@ function vStock(){
   const plan = restockPlan();
   const rows = S.products.map(p => { const r = reserved(p.id), av = n(p.stock)-r, st = av<=0?"bad":av<n(p.min)?"warn":"good";
     return `<tr><td><div class="name">${esc(p.name)}${catPill(p)}</div><div class="meta">${esc(p.type)}</div></td>
-    <td><div class="stepper"><button class="btn sm" data-step="${p.id}" data-d="-1" aria-label="Remove one">−</button><input class="num" data-count="${p.id}" type="number" min="0" value="${n(p.stock)}" aria-label="On hand for ${esc(p.name)}"><button class="btn sm" data-step="${p.id}" data-d="1" aria-label="Add one">+</button></div></td>
-    <td class="r num">${r||"—"}</td><td class="r"><span class="pill ${st}">${av}</span></td><td class="r num">${n(p.min)}</td><td class="r num">${money(n(p.stock)*n(p.price))}</td>
+    <td class="k"><div class="stepper"><button class="btn sm" data-step="${p.id}" data-d="-1" aria-label="Remove one">−</button><input class="num" data-count="${p.id}" type="number" min="0" value="${n(p.stock)}" aria-label="On hand for ${esc(p.name)}"><button class="btn sm" data-step="${p.id}" data-d="1" aria-label="Add one">+</button></div></td>
+    <td class="r num">${r||"—"}</td><td class="r k"><span class="pill ${st}">${av}</span></td><td class="r num">${n(p.min)}</td><td class="r num">${money(n(p.stock)*n(p.price))}</td>
     <td class="r"><div class="row" style="justify-content:flex-end;flex-wrap:nowrap"><button class="btn sm" data-sell="${p.id}" ${n(p.stock)?"":"disabled"}>Sell</button><button class="btn sm ghost" data-adjp="${p.id}">Adjust</button></div></td></tr>`; }).join("");
   const need = {}; plan.forEach(x => x.mats.forEach(m => need[m.spoolId] = (need[m.spoolId]||0) + m.grams));
   return head("Inventory", `${units} units on hand · ${money(value)} ${cur()} at sale price`, `<button class="btn" data-act="newPrint">Log a print</button>`) +
-  (S.products.length ? `<div class="tablewrap"><table><thead><tr><th>Product</th><th>On hand</th><th class="r">Reserved</th><th class="r">Available</th><th class="r">Min</th><th class="r">Value</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+  (S.products.length ? `<div class="tablewrap"><table data-compact><thead><tr><th>Product</th><th>On hand</th><th class="r">Reserved</th><th class="r">Available</th><th class="r">Min</th><th class="r">Value</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
   <p class="meta" style="margin:8px 2px 24px">Type a count or use − / + to correct stock. Reserved = units in open orders. Every change is logged below.</p>` : `<div class="empty">No products yet.</div>`) +
   `<div class="grid2"><section class="panel"><h2>Restock plan</h2>${plan.length ? `<div class="tablewrap" style="border:0"><table><thead><tr><th>Print</th><th class="r">Units</th><th class="r">Time</th><th></th></tr></thead><tbody>${plan.map(x=>`<tr><td><div class="name">${esc(x.p.name)}</div><div class="meta">${esc(x.p.type)}</div></td><td class="r num">${x.need}</td><td class="r num">${hrs(x.minutes)}</td><td class="r"><button class="btn sm" data-print="${x.p.id}" data-q="${x.need}">Log print</button></td></tr>`).join("")}</tbody></table></div>
     <div class="list" style="gap:6px;margin-top:12px"><div class="eyebrow">Filament needed</div>${Object.entries(need).map(([id,gr])=>{ const sp=spool(id), short = !sp || n(sp.remaining) < gr; return `<div class="row" style="justify-content:space-between"><span class="row" style="gap:8px"><span class="sw" style="background:${hex(sp?.color)}"></span>${esc(sp?.name.trim()||"Deleted spool")}</span><span class="num ${short?"":"meta"}" style="${short?"color:var(--bad);font-weight:600":""}">${g(gr)} g / ${g(sp?.remaining)} g${short?" · buy more":""}</span></div>`; }).join("")}</div>` : `<p class="meta">Every product is at or above its minimum.</p>`}</section>
-  <section class="panel"><h2>Stock history</h2>${S.moves.length ? `<div class="list" style="gap:0">${S.moves.slice(0,25).map(m=>`<div class="item"><div style="min-width:0"><div class="name">${esc(product(m.product)?.name||"Deleted product")} <span class="meta">${esc(m.reason)}${m.note?" · "+esc(m.note):""}</span></div><div class="meta">${fmtDate(m.date)}${m.after!=null?` · now ${m.after}`:""}</div></div><span class="num" style="font-weight:600;color:var(--${m.delta>0?"good":"bad"})">${m.delta>0?"+":""}${m.delta}</span></div>`).join("")}</div>` : `<p class="meta">Changes to stock will show here.</p>`}</section></div>`;
+  <section class="panel"><h2>Stock history</h2>${stockTimeline().length ? `<div class="list" style="gap:0">${stockTimeline().slice(0,30).map(m=>`<div class="item"><div style="min-width:0"><div class="name">${esc(product(m.product)?.name||"Deleted product")} <span class="meta">${esc(m.reason)}${m.note?" · "+esc(m.note):""}</span></div><div class="meta">${fmtDate(String(m.at).slice(0,10))}</div></div><span class="num" style="font-weight:600;color:var(--${m.delta>0?"good":"bad"})">${m.delta>0?"+":""}${m.delta}</span></div>`).join("")}</div>` : `<p class="meta">Changes to stock will show here.</p>`}</section></div>`;
 }
 function setStock(pid, value, reason, note){
-  const p = product(pid); if (!p) return; const b = n(p.stock), v = Math.max(0, Math.round(n(value)));
-  if (v === b) return; p.stock = v; logMove(pid, v-b, reason, note); persist("products"); render();
+  recompute(); const p = product(pid); if (!p) return; const b = n(p.stock), v = Math.max(0, Math.round(n(value)));
+  if (v === b) return; logMove(pid, v-b, reason, note); render();
 }
 function adjustStockForm(p){
   modal("Adjust stock · "+p.name, `<p class="meta">${esc(p.type)} · on hand <b class="num">${n(p.stock)}</b></p><div class="form">
@@ -759,7 +844,7 @@ function sellForm(p){
     m.querySelector("[data-x]").onclick = close;
     $("#qsave").onclick = () => { const q = Math.max(1, Math.round(n($("#q_q").value)));
       const o = {id:uid(), customer:$("#q_cu").value.trim(), contact:"", channel:$("#q_c").value, paid:$("#q_paid").checked, status:"delivered", deliveredAt:today(), created:today(), due:"", discount:0, shipCharge:0, shipCost:0, feePct:n(S.settings.feePct), packaging:n(S.settings.packaging), notes:"Quick sale", items:[{product:p.id, qty:q, price:n($("#q_p").value)}]};
-      S.orders.unshift(o); S.settings.lastChannel = o.channel; stockMove(o, -1, "Sold"); persist("orders","products","settings"); close(); render(); toast(`Sold ${q} × ${p.name}`); };
+      S.orders.unshift(o); S.settings.lastChannel = o.channel; o.deliveredTs = new Date().toISOString(); persist("orders","settings"); close(); render(); toast(`Sold ${q} × ${p.name}`); };
   });
 }
 
@@ -813,13 +898,13 @@ function vOrders(){
   const list = S.orders.filter(o => f==="all" || (f==="open" ? !["delivered","cancelled"].includes(o.status) : o.status===f));
   const unpaid = S.orders.filter(o=>!o.paid && o.status!=="cancelled").reduce((a,o)=>a+orderTotal(o),0);
   return head("Orders", `Delivered orders leave stock automatically.${unpaid?` <b class="num">${money(unpaid)} ${cur()}</b> still unpaid.`:""}`, `<div class="tabs">${[["open","Open"],["delivered","Delivered"],["all","All"]].map(([k,l])=>`<button data-of="${k}" aria-pressed="${f===k}">${l}</button>`).join("")}</div><button class="btn primary" data-act="newOrder" ${S.products.length?"":"disabled"}>New order</button>`) +
-  (list.length ? `<div class="tablewrap"><table><thead><tr><th>Customer</th><th>Items</th><th>Due</th><th class="r">Total</th><th class="r">Net profit</th><th>Payment</th><th>Status</th><th></th></tr></thead><tbody>${list.map(o=>{
+  (list.length ? `<div class="tablewrap"><table data-compact><thead><tr><th>Customer</th><th>Items</th><th>Due</th><th class="r">Total</th><th class="r">Net profit</th><th>Payment</th><th>Status</th><th></th></tr></thead><tbody>${list.map(o=>{
     const st = STATUSES.find(s=>s[0]===o.status)||STATUSES[0], t=orderTotal(o);
     const short = (o.items||[]).some(i=>{const p=product(i.product);return p && n(p.stock)<n(i.qty)}) && !["delivered","cancelled"].includes(o.status);
     return `<tr><td><div class="name">${esc(o.customer||"—")}</div><div class="meta">${esc([o.channel,o.contact].filter(Boolean).join(" · "))}</div></td>
     <td>${(o.items||[]).map(i=>`<div>${n(i.qty)}× ${esc(product(i.product)?.name||"?")} <span class="meta">${esc(product(i.product)?.type||"")}</span></div>`).join("")}${short?`<span class="pill warn">Not enough stock</span>`:""}</td>
-    <td class="num">${fmtDate(o.due)}</td><td class="r num">${money(t)}</td><td class="r num" style="color:var(--${orderNet(o)>=0?"ink":"bad"})">${money(orderNet(o))}</td><td><button class="btn ghost sm" style="padding:0" data-paid="${o.id}" title="Toggle payment">${o.paid?`<span class="pill good">Paid</span>`:`<span class="pill warn">Unpaid</span>`}</button></td>
-    <td><select data-ostatus="${o.id}" aria-label="Status" style="width:auto">${STATUSES.map(s=>`<option value="${s[0]}" ${s[0]===o.status?"selected":""}>${s[1]}</option>`).join("")}</select></td>
+    <td class="num">${fmtDate(o.due)}</td><td class="r num k">${money(t)}</td><td class="r num" style="color:var(--${orderNet(o)>=0?"ink":"bad"})">${money(orderNet(o))}</td><td><button class="btn ghost sm" style="padding:0" data-paid="${o.id}" title="Toggle payment">${o.paid?`<span class="pill good">Paid</span>`:`<span class="pill warn">Unpaid</span>`}</button></td>
+    <td class="k"><select data-ostatus="${o.id}" aria-label="Status" style="width:auto">${STATUSES.map(s=>`<option value="${s[0]}" ${s[0]===o.status?"selected":""}>${s[1]}</option>`).join("")}</select></td>
     <td class="r"><button class="btn sm ghost" data-edito="${o.id}">Edit</button></td></tr>`;}).join("")}</tbody></table></div>`
   : `<div class="empty">${S.products.length?"No orders here.":"Add a product before taking orders."}</div>`);
 }
@@ -836,7 +921,7 @@ function syncPanel(){
     <div class="row" style="justify-content:space-between"><span><span class="pill ${SY.error?(SY.offline?"warn":"bad"):"good"}">${esc(syncLabel())}</span></span><span class="meta">last sync ${ago(SY.lastSync)}</span></div>
     <p class="meta" style="margin:0">Connected to <b>${esc(SY.owner)}/${esc(SY.repo)}</b>${SY.readonly?" in <b>view-only</b> mode. This device shows the latest data and can't change anything.":". Changes upload a moment after you make them, and the latest data loads whenever you open the app."}</p>
     ${SY.error?`<div class="alert ${SY.offline?"warn":"bad"}">${esc(SY.error)}</div>`:""}
-    <div class="row"><button class="btn primary" data-act="syncNow">Sync now</button>${SY.readonly?"":`<button class="btn" data-act="shareView">Share view-only link</button>`}<button class="btn ghost danger" data-act="syncOff">Turn off on this device</button></div>
+    <div class="row"><button class="btn primary" data-act="syncNow">Sync now</button>${SY.readonly?"":`<button class="btn" data-act="shareView">Share view-only link</button><button class="btn" data-act="history">Version history</button>`}<button class="btn ghost danger" data-act="syncOff">Turn off on this device</button></div>
     ${SY.readonly?installTip():""}</div>`;
   return `${inviteBox()}<hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
   <p class="meta">Keep your phone, computer and any other device in step. Your data is saved to a private repository in your GitHub account. Set it up once, then connect each device with the same token.</p>
@@ -860,6 +945,8 @@ function vSettings(){
     <label class="f">Currency<input id="s_cur" value="${esc(s.currency||"SAR")}"></label>
     <label class="f">Printer cost per hour<input id="s_hour" type="number" step="0.01" value="${n(s.hour)}"></label>
     <label class="f">Electricity per hour<input id="s_energy" type="number" step="0.01" value="${n(s.energy)}"></label>
+    <label class="f full">Printer wear & parts per hour<input id="s_wear" type="number" step="0.01" value="${n(s.wear)}"><span style="font-weight:400">Printer price ÷ hours you expect it to last, plus nozzles and plates. Example: 2,000 ÷ 4,000 h = 0.50.</span></label>
+    <label class="f check full"><input id="s_fail" type="checkbox" ${s.failAllow===false?"":"checked"}> Add my failure rate to unit cost (now ${Math.round(failRate()*100)}%, from ${S.prints.reduce((a,x)=>a+(n(x.qty)||1),0)} printed units)</label>
     <div class="full eyebrow" style="margin-top:6px">Store</div>
     <label class="f">Payment / platform fee %<input id="s_fee" type="number" step="0.1" value="${n(s.feePct)}"></label>
     <label class="f">Packaging per order<input id="s_pack" type="number" step="0.01" value="${n(s.packaging)}"></label>
@@ -870,6 +957,7 @@ function vSettings(){
   <section class="panel"><h2>Cloud sync</h2>${syncPanel()}
   <h2 style="margin-top:24px">Backup</h2><p class="meta">${syncOn()?"Your data syncs to GitHub. A backup file is still a good extra copy.":"Your data is stored on this device. Export a backup regularly and save it to Files or iCloud Drive."} ${S.settings.lastBackup?`Last backup: ${fmtDate(S.settings.lastBackup.slice(0,10))}.`:"No backup yet."}</p>
   <div class="row"><button class="btn primary" data-act="export">Export backup</button><button class="btn" data-act="import">Import backup</button></div>
+  <p class="meta" style="margin-top:16px">WAV version ${APP_VERSION}</p>
   <h2 style="margin-top:24px">Trash</h2>${S.trash.length?`<div class="list" style="gap:0">${S.trash.map(t=>`<div class="item"><div><div class="name">${esc(t.record.name||t.record.title||t.record.customer||"Item")}</div><div class="meta">${esc(t.kind)} · ${t.deletedAt?new Date(t.deletedAt).toLocaleDateString("en-GB"):""}</div></div><button class="btn sm" data-restore="${t.id}">Restore</button></div>`).join("")}</div><button class="btn sm ghost danger" data-act="emptyTrash" style="margin-top:8px">Empty trash</button>`:`<p class="meta">Trash is empty.</p>`}
   </section></div>`;
 }
@@ -889,16 +977,17 @@ function productForm(p){
     <label class="f">Sale price (${cur()})<input id="p_price" type="number" step="0.01" value="${n(p.price)}"></label>
     <label class="f">Minimum stock<input id="p_minst" type="number" value="${n(p.min)}"></label>
     <label class="f">In stock<input id="p_stock" type="number" value="${n(p.stock)}"></label>
+    <label class="f full">AMS colour-change waste per unit (g)<input id="p_flush" type="number" step="0.1" min="0" value="${n(p.flush)}"><span style="font-weight:400">From Bambu Studio's filament summary: "Flushed" grams ÷ units on the plate. Single-colour prints: 0.</span></label>
     <label class="f check" style="align-self:end"><input id="p_nfc" type="checkbox" ${p.nfc?"checked":""}> Has NFC chip</label>
     <div class="full calc" id="pcalc"></div>
   </div><div class="foot">${isNew?"":`<button class="btn danger" id="pdel" style="margin-right:auto">Delete</button>`}<button class="btn" data-x>Cancel</button><button class="btn primary" id="psave">Save</button></div>`, m => {
-    const read = () => { p.materials = [...m.querySelectorAll("[data-mi]")].map(r=>({spoolId:r.querySelector("[data-mspool]").value, grams:n(r.querySelector("[data-mg]").value)})); Object.assign(p,{name:$("#p_name").value.trim(), type:$("#p_type").value.trim(), minutes:n($("#p_min").value), extras:n($("#p_ext").value), price:n($("#p_price").value), min:n($("#p_minst").value), stock:n($("#p_stock").value), nfc:$("#p_nfc").checked, category:(m.querySelector('input[name="p_cat"]:checked')||{}).value||"final"}); p.grams = Math.round(p.materials.reduce((a,x)=>a+x.grams,0)*100)/100; };
-    const calc = () => { read(); const mc=materialCost(p.materials), tc=n(p.minutes)/60*runRate(), c=mc+tc+n(p.extras), pr=n(p.price)-c; $("#pcalc").innerHTML = `<div>Filament<b>${money(mc)}</b></div><div>Printer time<b>${money(tc)}</b></div><div>Unit cost<b>${money(c)}</b></div><div>Profit<b style="color:var(--${pr>=0?"good":"bad"})">${money(pr)}</b></div><div>Suggested price<b>${suggestPrice(c)?money(suggestPrice(c)):"—"}</b><button class="btn sm ghost" type="button" id="useSug" style="padding:0;margin-top:2px">Use it</button></div>`; const u=$("#useSug"); if (u) u.onclick = () => { $("#p_price").value = suggestPrice(c); calc(); }; };
+    const read = () => { p.materials = [...m.querySelectorAll("[data-mi]")].map(r=>({spoolId:r.querySelector("[data-mspool]").value, grams:n(r.querySelector("[data-mg]").value)})); Object.assign(p,{name:$("#p_name").value.trim(), type:$("#p_type").value.trim(), minutes:n($("#p_min").value), extras:n($("#p_ext").value), price:n($("#p_price").value), min:n($("#p_minst").value), stock:n($("#p_stock").value), flush:n($("#p_flush").value), nfc:$("#p_nfc").checked, category:(m.querySelector('input[name="p_cat"]:checked')||{}).value||"final"}); p.grams = Math.round(p.materials.reduce((a,x)=>a+x.grams,0)*100)/100; };
+    const calc = () => { read(); const k=costParts(p), c=k.total, pr=n(p.price)-c; $("#pcalc").innerHTML = `<div>Filament<b>${money(k.fil)}</b></div><div>Colour-change waste<b>${money(k.flush)}</b></div><div>Printer time<b>${money(k.time)}</b></div><div>Failure allowance<b>${money(k.fail)}</b><small>${Math.round(k.fr*100)}% fail rate</small></div>${k.extras?`<div>Extras<b>${money(k.extras)}</b></div>`:""}<div>Unit cost<b>${money(c)}</b></div><div>Profit<b style="color:var(--${pr>=0?"good":"bad"})">${money(pr)}</b></div><div>Suggested price<b>${suggestPrice(c)?money(suggestPrice(c)):"—"}</b><button class="btn sm ghost" type="button" id="useSug" style="padding:0;margin-top:2px">Use it</button></div>`; const u=$("#useSug"); if (u) u.onclick = () => { $("#p_price").value = suggestPrice(c); calc(); }; };
     const wire = () => m.querySelectorAll("[data-mdel]").forEach(b => b.onclick = () => { b.closest("[data-mi]").remove(); calc(); });
     m.addEventListener("input", calc); m.addEventListener("change", calc); wire(); calc();
     $("#addMat").onclick = () => { $("#mats").insertAdjacentHTML("beforeend", matRow({spoolId:S.spools[0]?.id, grams:0}, Date.now())); wire(); };
     m.querySelector("[data-x]").onclick = close;
-    $("#psave").onclick = () => { try{ read(); if (!p.name){ $("#p_name").focus(); return; } p.spoolId = ""; const before = isNew ? 0 : n(product(p.id)?.stock); if (!isNew){ const i=S.products.findIndex(x=>x.id===p.id); S.products[i]=p; } else S.products.push(p); if (n(p.stock)!==before) logMove(p.id, n(p.stock)-before, isNew?"Opening stock":"Edited in product"); persist("products"); close(); render(); toast("Product saved"); }catch(e){ console.error(e); toast("Couldn't save: "+(e.message||e)); } };
+    $("#psave").onclick = () => { try{ read(); if (!p.name){ $("#p_name").focus(); return; } p.spoolId = ""; recompute(); const typed = n(p.stock), before = isNew ? 0 : n(product(p.id)?.stock); if (!isNew){ const i=S.products.findIndex(x=>x.id===p.id); S.products[i]=p; if (typed!==before) logMove(p.id, typed-before, "Edited in product"); } else { S.products.push(p); ensureLedger(); } persist("products","moves"); close(); render(); toast("Product saved"); }catch(e){ console.error(e); toast("Couldn't save: "+(e.message||e)); } };
     if (!isNew) $("#pdel").onclick = () => { close(); trash("products", product(p.id)); render(); };
   });
 }
@@ -906,7 +995,7 @@ function productForm(p){
 function printForm(pid, qty0){
   if (!S.products.length){ toast("Add a product first"); return; }
   let p = product(pid) || S.products[0];
-  const usageRows = (prod, qty) => S.spools.map(s => { const m=(prod.materials||[]).find(x=>x.spoolId===s.id); return {id:s.id, grams: m ? Math.round(n(m.grams)*qty*100)/100 : 0}; });
+  const usageRows = (prod, qty) => { const ug = unitGrams(prod); return S.spools.map(s => { const m = ug.find(x=>x.spoolId===s.id); return {id:s.id, grams: m ? Math.round(m.grams*qty*100)/100 : 0}; }); };
   modal("Log a print", `<div class="form">
     <label class="f full">Product<select id="r_p">${S.products.map(x=>`<option value="${x.id}" ${x.id===p.id?"selected":""}>${esc(x.name)} · ${esc(x.type)}</option>`).join("")}</select></label>
     <label class="f">Date<input id="r_date" type="date" value="${today()}"></label>
@@ -921,10 +1010,11 @@ function printForm(pid, qty0){
       const rows = usageRows(p,q).filter(u=>u.grams>0); const used = new Set(rows.map(r=>r.id));
       $("#r_use").innerHTML = rows.map(u=>useRow(u)).join("") + `<details><summary class="meta" style="cursor:pointer">Other spools</summary><div class="list" style="gap:6px;margin-top:6px">${S.spools.filter(s=>!used.has(s.id)).map(s=>useRow({id:s.id,grams:0})).join("")}</div></details>`; calc(); };
     const useRow = u => { const s=spool(u.id); return `<div class="mat" style="grid-template-columns:minmax(0,1fr) 100px"><span class="row" style="gap:8px;min-width:0"><span class="sw" style="background:${hex(s.color)}"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.name.trim())}</span><span class="meta num">${g(s.remaining)} left</span></span><input type="number" step="0.01" min="0" data-use="${s.id}" value="${u.grams}" aria-label="Grams of ${esc(s.name)}"></div>`; };
-    const read = () => { const q = n($("#r_qty").value)||1; return {product:$("#r_p").value, date:$("#r_date").value, qty:q, minutes:n($("#r_min").value), ...readResult(m, q), notes:$("#r_notes").value.trim(), usage:[...m.querySelectorAll("[data-use]")].map(i=>({id:i.dataset.use, grams:n(i.value)}))}; };
+    const read = () => { const q = n($("#r_qty").value)||1, rr = readResult(m, q), f = rr.progress/100;
+      return {product:$("#r_p").value, date:$("#r_date").value, qty:q, minutes:Math.round(n($("#r_min").value)*f), ...rr, notes:$("#r_notes").value.trim(), usage:[...m.querySelectorAll("[data-use]")].map(i=>({id:i.dataset.use, grams:Math.round(n(i.value)*f*100)/100}))}; };
     const calc = () => { const r = read(); const mc = r.usage.reduce((a,u)=>a+u.grams*ppg(spool(u.id)),0); const tc = r.minutes/60*runRate(); const ex = n(p.extras)*r.qty; const c = mc+tc+ex;
       const over = r.usage.find(u=>u.grams > n(spool(u.id)?.remaining));
-      $("#rcalc").innerHTML = `<div>Filament<b>${g(r.usage.reduce((a,u)=>a+u.grams,0))} g</b></div><div>Batch cost<b>${money(c)}</b></div><div>Per unit<b>${money(c/r.qty)}</b></div><div>Stock after<b>${n(p.stock)+r.goodQty}</b></div>${over?`<div class="full alert bad" style="grid-column:1/-1">${esc(spool(over.id).name.trim())} only has ${g(spool(over.id).remaining)} g left.</div>`:""}`; };
+      $("#rcalc").innerHTML = `<div>Filament<b>${g(r.usage.reduce((a,u)=>a+u.grams,0))} g</b></div><div>Batch cost<b>${money(c)}</b></div><div>Per unit<b>${money(c/r.qty)}</b></div><div>Stock after<b>${n(p.stock)+r.goodQty}</b></div>${r.progress<100?`<div class="full" style="grid-column:1/-1">Counting ${r.progress}% of the filament and time: ${g(r.usage.reduce((a,u)=>a+u.grams,0))} g, ${hrs(r.minutes)}.</div>`:""}${over?`<div class="full alert bad" style="grid-column:1/-1">${esc(spool(over.id).name.trim())} only has ${g(spool(over.id).remaining)} g left.</div>`:""}`; };
     $("#r_p").onchange = fill; $("#r_qty").oninput = () => { fill(); syncResult(m); }; m.addEventListener("input", e => { if (e.target.id!=="r_qty") calc(); }); m.addEventListener("change", () => { syncResult(m); calc(); });
     fill(); syncResult(m);
     m.querySelector("[data-x]").onclick = close;
@@ -941,6 +1031,7 @@ function resultFields(qty, cur){
     <div class="form" style="margin-top:10px" data-resx>
       <label class="f" data-partf>Usable units<input id="r_goodq" type="number" min="0" value="${cur?cur.goodQty:Math.max(0,qty-1)}"></label>
       <label class="f" data-failf>What went wrong?<select id="r_reason">${REASONS.map(x=>`<option ${cur&&cur.failReason===x?"selected":""}>${x}</option>`).join("")}</select></label>
+      ${cur ? "" : `<label class="f" data-progf>How far did it get? (%)<input id="r_prog" type="number" min="1" max="100" step="1" value="100"><span style="font-weight:400">Filament, time and cost are counted for this share only.</span></label>`}
     </div>`;
 }
 function syncResult(m){
@@ -948,13 +1039,15 @@ function syncResult(m){
   m.querySelector("[data-partf]").hidden = v !== "part";
   m.querySelector("[data-failf]").hidden = v === "ok";
   m.querySelector("[data-resx]").hidden = v === "ok";
+  const pf = m.querySelector("[data-progf]"); if (pf) pf.hidden = v !== "fail";
   const q = n(m.querySelector("#r_qty")?.value) || n(m.dataset.qty) || 1, gi = m.querySelector("#r_goodq");
   gi.max = q; if (n(gi.value) >= q) gi.value = Math.max(0, q-1);
 }
 function readResult(m, q){
   const v = m.querySelector('input[name="res"]:checked')?.value || "ok";
   const goodQty = v==="ok" ? q : v==="fail" ? 0 : Math.max(0, Math.min(q, Math.round(n(m.querySelector("#r_goodq").value))));
-  return {goodQty, failReason: goodQty<q ? m.querySelector("#r_reason").value : ""};
+  const pi = m.querySelector("#r_prog"), progress = v==="fail" && pi ? Math.max(1, Math.min(100, Math.round(n(pi.value)||100))) : 100;
+  return {goodQty, failReason: goodQty<q ? m.querySelector("#r_reason").value : "", progress};
 }
 function resultForm(pr){
   const q = n(pr.qty)||1, cur = {qty:q, goodQty:goodOf(pr), failReason:pr.failReason||""};
@@ -962,9 +1055,8 @@ function resultForm(pr){
     m.dataset.qty = q; syncResult(m); m.addEventListener("change", () => syncResult(m));
     m.querySelector("[data-x]").onclick = close;
     $("#ressave").onclick = () => { const r = readResult(m, q), p = product(pr.product), diff = r.goodQty - goodOf(pr);
-      if (p){ const b=n(p.stock); p.stock = Math.max(0, b + diff); logMove(p.id, p.stock-b, "Print result changed"); }
       pr.goodQty = r.goodQty; pr.good = r.goodQty > 0; pr.failReason = r.failReason;
-      persist("prints","products"); close(); render(); toast(diff ? `Result updated · stock ${diff>0?"+":""}${diff}` : "Result updated"); };
+      persist("prints"); close(); render(); toast(diff ? `Result updated · stock ${diff>0?"+":""}${diff}` : "Result updated"); };
   });
 }
 function spoolForm(s){
@@ -979,10 +1071,10 @@ function spoolForm(s){
   </div><div class="foot">${isNew?"":`<button class="btn danger" id="sdel" style="margin-right:auto">Delete</button>`}${isNew?"":`<button class="btn" id="sdup">Duplicate</button>`}<button class="btn" data-x>Cancel</button><button class="btn primary" id="ssave">Save</button></div>`, m => {
     const read = () => Object.assign(s,{name:$("#s_name").value, color:$("#s_color").value, price:n($("#s_price").value), initial:n($("#s_init").value), remaining:n($("#s_rem").value), min:n($("#s_min").value)});
     m.querySelector("[data-x]").onclick = close;
-    $("#ssave").onclick = () => { read(); if (isNew) S.spools.push(s); else S.spools[S.spools.findIndex(x=>x.id===s.id)] = s; persist("spools"); close(); render(); toast("Spool saved"); };
+    $("#ssave").onclick = () => { recompute(); const was = isNew ? 0 : n(spool(s.id)?.remaining); read(); if (isNew){ S.spools.push(s); ensureLedger(); } else { S.spools[S.spools.findIndex(x=>x.id===s.id)] = s; if (n(s.remaining)!==was) logFil(s.id, n(s.remaining)-was, "Edited"); } persist("spools","fil"); close(); render(); toast("Spool saved"); };
     if (!isNew){
       $("#sdel").onclick = () => { const used = S.products.filter(p=>(p.materials||[]).some(mm=>mm.spoolId===s.id)); close(); if (used.length) confirmBox(`${used.map(p=>p.name).join(", ")} use this spool. Their cost will drop the filament part.`, "Delete anyway", ()=>{ trash("spools", spool(s.id)); render(); }); else { trash("spools", spool(s.id)); render(); } };
-      $("#sdup").onclick = () => { read(); const c = {...s, id:uid(), remaining:n(s.initial)}; S.spools.push(c); persist("spools"); close(); render(); toast("New full spool added"); };
+      $("#sdup").onclick = () => { read(); const c = {...s, id:uid(), remaining:n(s.initial)}; S.spools.push(c); ensureLedger(); persist("spools","fil"); close(); render(); toast("New full spool added"); };
     }
   });
 }
@@ -995,7 +1087,7 @@ function adjustForm(s){
     const upd = () => { const t=n($("#a_total").value); if (t) $("#a_rem").value = Math.max(0, t - n($("#a_reel").value)); };
     $("#a_total").oninput = upd; $("#a_reel").oninput = upd;
     m.querySelector("[data-x]").onclick = close;
-    $("#asave").onclick = () => { s.remaining = n($("#a_rem").value); s.reel = n($("#a_reel").value); persist("spools"); close(); render(); toast("Remaining weight updated"); };
+    $("#asave").onclick = () => { recompute(); const was = n(spool(s.id)?.remaining); s.reel = n($("#a_reel").value); logFil(s.id, n($("#a_rem").value)-was, "Weighed"); persist("spools"); close(); render(); toast("Remaining weight updated"); };
   });
 }
 
@@ -1022,17 +1114,14 @@ function orderForm(o){
     $("#addItem").onclick = () => { $("#oitems").insertAdjacentHTML("beforeend", itemRow({product:S.products[0].id, qty:1, price:n(S.products[0].price)}, Date.now())); wire(); calc(); };
     m.querySelector("[data-x]").onclick = close;
     $("#osave").onclick = () => { read(); if (!o.items.length) return; S.settings.lastChannel = o.channel; if (isNew){ o.feePct = n(S.settings.feePct); o.packaging = n(S.settings.packaging); S.orders.unshift(o); } else S.orders[S.orders.findIndex(x=>x.id===o.id)] = o; persist("orders","settings"); close(); render(); toast("Order saved"); };
-    if (!isNew) $("#odel").onclick = () => { close(); const cur0 = S.orders.find(x=>x.id===o.id); if (cur0.status==="delivered") stockMove(cur0, +1); trash("orders", cur0); render(); };
+    if (!isNew) $("#odel").onclick = () => { close(); const cur0 = S.orders.find(x=>x.id===o.id); trash("orders", cur0); render(); };
   });
 }
-function stockMove(o, sign, reason){ (o.items||[]).forEach(i => { const p=product(i.product); if (p){ const b=n(p.stock); p.stock = Math.max(0, b + sign*n(i.qty)); logMove(p.id, p.stock-b, reason || (sign<0?"Sold":"Sale undone"), o.customer||""); } }); }
 function setOrderStatus(id, status){
   const o = S.orders.find(x=>x.id===id); if (!o) return;
   const was = o.status === "delivered", now = status === "delivered";
-  if (!was && now) stockMove(o, -1);
-  if (was && !now) stockMove(o, +1);
-  o.status = status; if (now) o.deliveredAt = today();
-  persist("orders","products"); render(); toast(now ? "Delivered · stock updated" : "Status updated");
+  o.status = status; if (now && !was){ o.deliveredAt = today(); o.deliveredTs = new Date().toISOString(); }
+  persist("orders"); render(); toast(now ? "Delivered · stock updated" : "Status updated");
 }
 
 function noteForm(kind, x){
@@ -1054,7 +1143,7 @@ function applyBackup(d, label){
   confirmBox(`Replace the data on this phone with ${label}? (${d.products.length} products, ${d.spools.length} spools, ${(d.prints||[]).length} prints)`, "Import", () => {
     const b = blank(); KEYS.forEach(k => { if (d[k] !== undefined) b[k] = d[k]; });
     b.settings = Object.assign(blank().settings, d.settings||{});
-    S = b; persist(...KEYS); render(); toast("Backup imported");
+    S = b; ensureLedger(); recompute(); persist(...KEYS); render(); toast("Backup imported");
   });
 }
 function importFile(){
@@ -1101,12 +1190,12 @@ function bind(){
   M.querySelectorAll("[data-act]").forEach(b => b.onclick = () => ({
     newProduct:()=>productForm(), newPrint:()=>printForm(), newSpool:()=>spoolForm(), newOrder:()=>S.products.length?orderForm():toast("Add a product first"),
     import:importFile, export:exportFile,
-    syncNow:()=>syncNow(true), shareView:shareInviteForm,
+    syncNow:()=>syncNow(true), shareView:shareInviteForm, history:historyForm,
     useInvite:()=>useInvite($("#inv_text").value),
     copyInvite:()=>{ let l=""; try{ l=localStorage.getItem("wav-invite")||""; }catch(e){} if (l) copyText(l, "Invite link copied. Paste it in the app after adding it to your Home Screen."); }, syncOff:()=>confirmBox("Turn off sync on this device? Your data stays here, and other devices keep syncing.","Turn off",disconnectSync),
     syncConnect:()=>{ const o=$("#sy_owner").value, r=$("#sy_repo").value, t=$("#sy_token").value; if (!o.trim()||!r.trim()||!t.trim()) return toast("Fill in account, repository and token"); toast("Connecting…"); connectSync(o, r, t, $("#sy_ro").checked); },
     emptyTrash:()=>confirmBox("Permanently delete everything in the trash? This can't be undone.","Empty trash",()=>{ S.trash=[]; persist("trash"); render(); }),
-    saveSettings:()=>{ Object.assign(S.settings,{workspace:$("#s_ws").value.trim()||"WAV", currency:$("#s_cur").value.trim()||"SAR", hour:n($("#s_hour").value), energy:n($("#s_energy").value), feePct:n($("#s_fee").value), packaging:n($("#s_pack").value), targetMargin:n($("#s_tm").value)}); persist("settings"); render(); toast("Settings saved"); }
+    saveSettings:()=>{ Object.assign(S.settings,{workspace:$("#s_ws").value.trim()||"WAV", currency:$("#s_cur").value.trim()||"SAR", hour:n($("#s_hour").value), energy:n($("#s_energy").value), wear:n($("#s_wear").value), failAllow:$("#s_fail").checked, feePct:n($("#s_fee").value), packaging:n($("#s_pack").value), targetMargin:n($("#s_tm").value)}); persist("settings"); render(); toast("Settings saved"); }
   })[b.dataset.act]?.());
   M.querySelectorAll("[data-editp]").forEach(b => b.onclick = () => productForm(product(b.dataset.editp)));
   M.querySelectorAll("[data-print]").forEach(b => b.onclick = () => printForm(b.dataset.print, b.dataset.q));
@@ -1129,7 +1218,7 @@ function bind(){
   M.querySelectorAll("[data-res]").forEach(b => b.onclick = () => resultForm(S.prints.find(x=>x.id===b.dataset.res)));
   M.querySelectorAll("[data-delpr]").forEach(b => b.onclick = () => {
     const pr = S.prints.find(x=>x.id===b.dataset.delpr);
-    confirmBox("Delete this print? Its filament goes back to the spools and its units come off stock.", "Delete print", () => { undoPrint(pr); trash("prints", pr); persist("spools","products"); render(); });
+    confirmBox("Delete this print? Its filament goes back to the spools and its units come off stock.", "Delete print", () => { trash("prints", pr); render(); });
   });
   const pq = $("#pq"); if (pq){ pq.oninput = () => { filter.p = pq.value; const pos = pq.selectionStart; render(); const n2=$("#pq"); n2.focus(); n2.setSelectionRange(pos,pos); }; }
 }
@@ -1152,7 +1241,18 @@ if (/invite=/.test(location.hash)){
 }
 window.addEventListener("hashchange", () => { const v = location.hash.slice(1); if (VIEWS.some(x=>x[0]===v) && v!==view){ view=v; render(); } });
 boot();
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(()=>{}));
+if ("serviceWorker" in navigator) window.addEventListener("load", async () => {
+  try{
+    const reg = await navigator.serviceWorker.register("sw.js");
+    const offer = w => { if (!w || !navigator.serviceWorker.controller) return;
+      $("#updRoot").innerHTML = `<div class="upd" role="status"><span>A new version of WAV is ready.</span><button class="btn sm primary" id="updBtn">Update now</button></div>`;
+      $("#updBtn").onclick = () => { $("#updBtn").disabled = true; w.postMessage("skip"); setTimeout(() => location.reload(), 2500); }; };
+    if (reg.waiting) offer(reg.waiting);
+    reg.addEventListener("updatefound", () => { const w = reg.installing; if (w) w.addEventListener("statechange", () => { if (w.state === "installed") offer(w); }); });
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") reg.update().catch(()=>{}); });
+    let reloading = false; navigator.serviceWorker.addEventListener("controllerchange", () => { if (reloading) return; reloading = true; location.reload(); });
+  }catch(e){}
+});
 })();
 </script>
 
