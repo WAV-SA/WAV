@@ -121,6 +121,9 @@ tbody tr:hover{background:var(--sunk)}
 .note p{margin:0;white-space:pre-wrap}
 
 /* modal */
+#modal2Root .scrim{z-index:45}
+.drop{border:1.5px dashed var(--line);border-radius:10px;padding:12px 14px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;color:var(--muted);font-size:13px}
+.drop.over{border-color:var(--accent);background:var(--accent-soft)}
 .scrim{position:fixed;inset:0;background:color-mix(in srgb,#000 45%,transparent);display:flex;align-items:center;justify-content:center;padding:16px;z-index:40}
 .modal{background:var(--surface);border:1px solid var(--line);border-radius:14px;width:min(620px,100%);max-height:calc(100vh - 32px);overflow:auto;padding:22px}
 .modal h3{font-family:var(--f-display);font-weight:400;font-size:18px;margin:0 0 16px}
@@ -235,12 +238,13 @@ body.ro [data-count]{border-color:transparent;background:transparent}
 <button class="fab" id="fab" aria-label="Quick add">+</button>
 <div id="updRoot"></div>
 <div id="modalRoot"></div>
+<div id="modal2Root"></div>
 <div id="toastRoot"></div>
 
 <script>
 (() => {
 const KEYS = ["products","spools","prints","orders","moves","fil","ideas","lessons","settings","trash"];
-const APP_VERSION = "2026.11.12";
+const APP_VERSION = "2026.11.12b";
 const blank = () => ({products:[],spools:[],prints:[],orders:[],moves:[],fil:[],ideas:[],lessons:[],settings:{hour:2,energy:0.2,wear:0,failAllow:true,workspace:"WAV",currency:"SAR",feePct:0,packaging:0,targetMargin:50},trash:[]});
 let S = blank();
 let view = "home", db = null, mode = "local", loaded = false, filter = {};
@@ -971,6 +975,7 @@ function productForm(p){
     <label class="f">Code<input id="p_name" value="${esc(p.name)}"></label>
     <label class="f">Name / type<input id="p_type" value="${esc(p.type)}"></label>
     <div class="f full"><span>Category</span><div class="seg" role="radiogroup" aria-label="Category" style="grid-template-columns:repeat(2,minmax(0,1fr))">${CATS.map(([k,l])=>`<label class="${k==="final"?"ok":""}"><input type="radio" name="p_cat" value="${k}" ${catOf(p)===k?"checked":""}>${l}<small>${k==="final"?"ready to sell":"still testing"}</small></label>`).join("")}</div></div>
+    ${bambuDrop("p_bb", "Fill the recipe from a Bambu Studio sliced file")}
     <div class="full"><div class="eyebrow" style="margin-bottom:6px">Filament per unit (g)</div><div class="list" id="mats" style="gap:6px">${p.materials.map(matRow).join("")}</div><button class="btn sm" id="addMat" style="margin-top:6px">Add colour</button></div>
     <label class="f">Print time (min)<input id="p_min" type="number" value="${n(p.minutes)}"></label>
     <label class="f">Extras per unit (${cur()})<input id="p_ext" type="number" step="0.01" value="${n(p.extras)}"></label>
@@ -986,10 +991,151 @@ function productForm(p){
     const wire = () => m.querySelectorAll("[data-mdel]").forEach(b => b.onclick = () => { b.closest("[data-mi]").remove(); calc(); });
     m.addEventListener("input", calc); m.addEventListener("change", calc); wire(); calc();
     $("#addMat").onclick = () => { $("#mats").insertAdjacentHTML("beforeend", matRow({spoolId:S.spools[0]?.id, grams:0}, Date.now())); wire(); };
+    wireDrop($("#p_bb"), {purpose:"recipe", apply: r => {
+      $("#mats").innerHTML = r.items.map((it,i) => matRow({spoolId:it.spoolId, grams:Math.round(it.grams/r.units*100)/100}, i)).join(""); wire();
+      $("#p_min").value = Math.round(r.seconds/60/r.units); $("#p_flush").value = 0;
+      calc(); toast(`Recipe set per piece from ${r.units} on the plate. Colour-change waste is already included.`);
+    }});
     m.querySelector("[data-x]").onclick = close;
     $("#psave").onclick = () => { try{ read(); if (!p.name){ $("#p_name").focus(); return; } p.spoolId = ""; recompute(); const typed = n(p.stock), before = isNew ? 0 : n(product(p.id)?.stock); if (!isNew){ const i=S.products.findIndex(x=>x.id===p.id); S.products[i]=p; if (typed!==before) logMove(p.id, typed-before, "Edited in product"); } else { S.products.push(p); ensureLedger(); } persist("products","moves"); close(); render(); toast("Product saved"); }catch(e){ console.error(e); toast("Couldn't save: "+(e.message||e)); } };
     if (!isNew) $("#pdel").onclick = () => { close(); trash("products", product(p.id)); render(); };
   });
+}
+
+/* ---------- Bambu Studio sliced files ---------- */
+function modal2(title, body, onMount){
+  $("#modal2Root").innerHTML = `<div class="scrim" id="scrim2"><div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}"><h3>${esc(title)}</h3>${body}</div></div>`;
+  $("#scrim2").addEventListener("mousedown", e => { if (e.target.id === "scrim2") close2(); });
+  onMount && onMount($("#modal2Root .modal"));
+}
+function close2(){ $("#modal2Root").innerHTML = ""; }
+async function readZip(buf){
+  const dv = new DataView(buf), u8 = new Uint8Array(buf), L = buf.byteLength;
+  let eocd = -1; for (let i = L - 22; i >= Math.max(0, L - 65557); i--) if (dv.getUint32(i, true) === 0x06054b50){ eocd = i; break; }
+  if (eocd < 0) return null;
+  let count = dv.getUint16(eocd+10, true), cdOff = dv.getUint32(eocd+16, true);
+  if (cdOff === 0xFFFFFFFF || count === 0xFFFF){
+    const loc = eocd - 20; if (loc >= 0 && dv.getUint32(loc, true) === 0x07064b50){ const z = Number(dv.getBigUint64(loc+8, true)); count = Number(dv.getBigUint64(z+32, true)); cdOff = Number(dv.getBigUint64(z+48, true)); }
+  }
+  const dec = new TextDecoder(), entries = new Map(); let p = cdOff;
+  for (let k = 0; k < count && p + 46 <= L && dv.getUint32(p, true) === 0x02014b50; k++){
+    const method = dv.getUint16(p+10, true); let csize = dv.getUint32(p+20, true), usize = dv.getUint32(p+24, true);
+    const nl = dv.getUint16(p+28, true), el = dv.getUint16(p+30, true), cl = dv.getUint16(p+32, true); let off = dv.getUint32(p+42, true);
+    const name = dec.decode(u8.subarray(p+46, p+46+nl));
+    let e = p + 46 + nl; const end = e + el;
+    while (e + 4 <= end){ const id = dv.getUint16(e, true), sz = dv.getUint16(e+2, true); if (id === 1){ let q = e + 4;
+        if (usize === 0xFFFFFFFF){ usize = Number(dv.getBigUint64(q, true)); q += 8; }
+        if (csize === 0xFFFFFFFF){ csize = Number(dv.getBigUint64(q, true)); q += 8; }
+        if (off === 0xFFFFFFFF){ off = Number(dv.getBigUint64(q, true)); } }
+      e += 4 + sz; }
+    entries.set(name, {method, csize, usize, off});
+    p = end + cl;
+  }
+  return {buf, dv, entries};
+}
+async function zipRead(z, name, limit){
+  const en = z.entries.get(name); if (!en) return null;
+  const lh = en.off, start = lh + 30 + z.dv.getUint16(lh+26, true) + z.dv.getUint16(lh+28, true);
+  const raw = new Uint8Array(z.buf, start, en.csize);
+  let bytes;
+  if (en.method === 0) bytes = limit ? raw.subarray(0, limit) : raw;
+  else if (en.method === 8){
+    if (typeof DecompressionStream === "undefined") throw new Error("This browser can't open the file. Update iOS or your browser and try again.");
+    const rd = new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw")).getReader(), parts = []; let got = 0;
+    for (;;){ const {done, value} = await rd.read(); if (done) break; parts.push(value); got += value.length; if (limit && got >= limit){ rd.cancel().catch(()=>{}); break; } }
+    bytes = new Uint8Array(got); let o = 0; parts.forEach(x => { bytes.set(x, o); o += x.length; });
+  } else throw new Error("This file uses a compression the app can't read.");
+  return new TextDecoder().decode(bytes);
+}
+function parseDuration(t){ if (!t) return 0; let sec = 0; const m = String(t).match(/(\d+)\s*d/); if (m) sec += +m[1]*86400;
+  [[/(\d+)\s*h/,3600],[/(\d+)\s*m(?!m)/,60],[/(\d+)\s*s/,1]].forEach(([re,k]) => { const x = String(t).match(re); if (x) sec += +x[1]*k; }); return sec; }
+function parseGcodeHead(txt){
+  const w = (txt.match(/;\s*total filament weight \[g\]\s*:\s*([^\n]+)/i)||[])[1];
+  const t = (txt.match(/total estimated time:\s*([^;\n]+)/i)||txt.match(/estimated printing time[^=]*=\s*([^\n]+)/i)||[])[1];
+  const col = (txt.match(/;\s*filament_colou?r\s*=\s*([^\n]+)/i)||[])[1], typ = (txt.match(/;\s*filament_type\s*=\s*([^\n]+)/i)||[])[1];
+  return {weights:w ? w.split(/[,;]/).map(x=>n(x)) : [], seconds:parseDuration(t), colors:col ? col.split(/[;,]/).map(x=>x.trim()) : [], types:typ ? typ.split(/[;,]/).map(x=>x.trim()) : []};
+}
+async function parseBambu(file){
+  const buf = await file.arrayBuffer(), head = new Uint8Array(buf, 0, Math.min(4, buf.byteLength));
+  if (head[0] === 0x50 && head[1] === 0x4b){
+    const z = await readZip(buf); if (!z) throw new Error("This file looks damaged. Export it again from Bambu Studio.");
+    const cfg = await zipRead(z, "Metadata/slice_info.config");
+    if (!cfg) throw new Error("This project hasn't been sliced yet. In Bambu Studio press Slice plate, then File → Export → Export plate sliced file (.gcode.3mf).");
+    const doc = new DOMParser().parseFromString(cfg, "application/xml"), plates = [];
+    for (const pl of doc.querySelectorAll("plate")){
+      const meta = k => pl.querySelector(`metadata[key="${k}"]`)?.getAttribute("value");
+      const idx = meta("index") || String(plates.length+1);
+      let fils = [...pl.querySelectorAll("filament")].map(f => ({id:f.getAttribute("id"), type:f.getAttribute("type")||"", color:(f.getAttribute("color")||"").slice(0,7), grams:n(f.getAttribute("used_g"))}));
+      let seconds = n(meta("prediction"));
+      if (!fils.some(f => f.grams > 0) || !seconds){
+        const g = await zipRead(z, `Metadata/plate_${idx}.gcode`, 400000);
+        if (g){ const h = parseGcodeHead(g); if (!seconds) seconds = h.seconds;
+          if (!fils.some(f => f.grams > 0)) fils = h.weights.map((w,i) => ({id:String(i+1), type:h.types[i]||fils[i]?.type||"", color:(fils[i]?.color||h.colors[i]||"").slice(0,7), grams:w})); }
+      }
+      const objs = [...pl.querySelectorAll("object")].filter(o => o.getAttribute("skipped") !== "true").map(o => o.getAttribute("name")||"");
+      plates.push({index:idx, seconds, fils:fils.filter(f => f.grams > 0), objects:objs});
+    }
+    if (!plates.length) throw new Error("No sliced plate found in this file. Slice the plate in Bambu Studio and export it again.");
+    return {name:file.name, plates};
+  }
+  const txt = new TextDecoder().decode(new Uint8Array(buf, 0, Math.min(buf.byteLength, 400000)));
+  const tail = new TextDecoder().decode(new Uint8Array(buf, Math.max(0, buf.byteLength-300000)));
+  if (!/;\s*(HEADER_BLOCK_START|generated by|BambuStudio|OrcaSlicer)/i.test(txt)) throw new Error("This isn't a Bambu Studio file. In Bambu Studio use File → Export → Export plate sliced file, then choose that file.");
+  const h = parseGcodeHead(txt), h2 = parseGcodeHead(tail), colors = h.colors.length ? h.colors : h2.colors, types = h.types.length ? h.types : h2.types;
+  const fils = h.weights.map((w,i) => ({id:String(i+1), type:types[i]||"", color:(colors[i]||"").slice(0,7), grams:w})).filter(f => f.grams > 0);
+  if (!fils.length) throw new Error("Couldn't find filament weights in this G-code. Export the sliced file (.gcode.3mf) from Bambu Studio instead.");
+  return {name:file.name, plates:[{index:"1", seconds:h.seconds || h2.seconds, fils, objects:[]}]};
+}
+function rgbOf(h){ const m = /^#?([0-9a-f]{6})/i.exec(h||""); if (!m) return null; const v = parseInt(m[1],16); return [v>>16&255, v>>8&255, v&255]; }
+function guessSpool(color){
+  const mapped = (S.settings.colorMap||{})[String(color).toLowerCase()]; if (mapped && spool(mapped)) return mapped;
+  const c = rgbOf(color); if (!c || !S.spools.length) return S.spools[0]?.id || "";
+  let best = null, bd = Infinity;
+  S.spools.forEach(sp => { const r = rgbOf(sp.color); if (!r) return; const d = (r[0]-c[0])**2*0.3 + (r[1]-c[1])**2*0.59 + (r[2]-c[2])**2*0.11 - (n(sp.remaining) > 0 ? 0.5 : 0);
+    if (d < bd){ bd = d; best = sp.id; } });
+  return best || S.spools[0].id;
+}
+/* Opens the file picker, shows what was found, lets the person match colours to spools. onApply gets {units, seconds, items:[{spoolId, grams}], name} for the whole plate. */
+function pickBambu(onApply, purpose){
+  const inp = document.createElement("input"); inp.type = "file";
+  inp.onchange = async () => { const f = inp.files[0]; if (!f) return; await bambuFromFile(f, onApply, purpose); };
+  inp.click();
+}
+async function bambuFromFile(f, onApply, purpose){
+  let info;
+  try{ toast("Reading "+f.name+"…"); info = await parseBambu(f); }
+  catch(e){ toast(e.message || "Couldn't read that file."); return; }
+  const showPlate = pi => {
+    $("#toastRoot").innerHTML = "";
+    const pl = info.plates[pi], units = Math.max(1, pl.objects.length), total = pl.fils.reduce((a,x)=>a+x.grams,0);
+    modal2("From Bambu Studio", `<p class="meta" style="margin-top:0">${esc(info.name)}</p>
+      ${info.plates.length > 1 ? `<label class="f" style="margin-bottom:10px">Plate<select id="bb_plate">${info.plates.map((x,i)=>`<option value="${i}" ${i===pi?"selected":""}>Plate ${esc(x.index)}</option>`).join("")}</select></label>` : ""}
+      <div class="calc" style="margin-bottom:12px"><div>Print time<b>${hrs(pl.seconds/60)}</b></div><div>Filament<b>${g(total)} g</b></div><div>Pieces on plate<b>${pl.objects.length || "?"}</b></div></div>
+      <div class="eyebrow" style="margin-bottom:6px">Match each colour to a spool</div>
+      <div class="list" style="gap:8px">${pl.fils.map((x,i)=>`<div class="mat" style="grid-template-columns:auto minmax(0,1fr) auto"><span class="sw" style="background:${hex(x.color)};width:18px;height:18px"></span><select data-bb="${i}" aria-label="Spool for ${esc(x.color)} ${esc(x.type)}">${S.spools.map(sp=>`<option value="${sp.id}" ${sp.id===guessSpool(x.color)?"selected":""}>${esc(sp.name.trim())} · ${g(sp.remaining)} g left</option>`).join("")}</select><span class="num" style="font-weight:600">${g(x.grams)} g</span></div>`).join("")}</div>
+      <label class="f" style="margin-top:12px">${purpose === "recipe" ? "Pieces on this plate (the recipe is per piece)" : "Pieces on this plate"}<input id="bb_units" type="number" min="1" value="${units}"></label>
+      <p class="meta">Weights include colour-change waste and the prime tower, as Bambu Studio counts them.</p>
+      <div class="foot"><button class="btn" data-x2>Cancel</button><button class="btn primary" id="bb_ok">${purpose === "recipe" ? "Use as recipe" : "Fill in this print"}</button></div>`, m => {
+      m.querySelector("[data-x2]").onclick = close2;
+      const ps = $("#bb_plate"); if (ps) ps.onchange = () => showPlate(+ps.value);
+      $("#bb_ok").onclick = () => {
+        const map = {}, cm = Object.assign({}, S.settings.colorMap||{});
+        pl.fils.forEach((x,i) => { const sid = m.querySelector(`[data-bb="${i}"]`).value; map[sid] = (map[sid]||0) + x.grams; if (x.color) cm[x.color.toLowerCase()] = sid; });
+        S.settings.colorMap = cm; persist("settings");
+        close2();
+        onApply({units:Math.max(1, Math.round(n($("#bb_units")?.value)||units)), seconds:pl.seconds, name:info.name, items:Object.entries(map).map(([spoolId, grams]) => ({spoolId, grams:Math.round(grams*100)/100}))});
+      };
+    });
+  };
+  if (!info.plates.some(p => p.fils.length)) return toast("No filament use found in that file. Slice the plate and export it again.");
+  showPlate(Math.max(0, info.plates.findIndex(p => p.fils.length)));
+}
+function bambuDrop(id, label){ return `<div class="drop full" id="${id}"><span>${label}</span><button class="btn sm" type="button" data-bbpick>Choose file</button></div>`; }
+function wireDrop(el, handler){
+  if (!el) return; el.querySelector("[data-bbpick]").onclick = () => pickBambu(handler.apply, handler.purpose);
+  el.addEventListener("dragover", e => { e.preventDefault(); el.classList.add("over"); });
+  el.addEventListener("dragleave", () => el.classList.remove("over"));
+  el.addEventListener("drop", e => { e.preventDefault(); el.classList.remove("over"); const f = e.dataTransfer.files[0]; if (f) bambuFromFile(f, handler.apply, handler.purpose); });
 }
 
 function printForm(pid, qty0){
@@ -997,6 +1143,7 @@ function printForm(pid, qty0){
   let p = product(pid) || S.products[0];
   const usageRows = (prod, qty) => { const ug = unitGrams(prod); return S.spools.map(s => { const m = ug.find(x=>x.spoolId===s.id); return {id:s.id, grams: m ? Math.round(m.grams*qty*100)/100 : 0}; }); };
   modal("Log a print", `<div class="form">
+    ${bambuDrop("r_bb", "Fill from a Bambu Studio sliced file (.gcode.3mf)")}
     <label class="f full">Product<select id="r_p">${S.products.map(x=>`<option value="${x.id}" ${x.id===p.id?"selected":""}>${esc(x.name)} · ${esc(x.type)}</option>`).join("")}</select></label>
     <label class="f">Date<input id="r_date" type="date" value="${today()}"></label>
     <label class="f">Units in this print<input id="r_qty" type="number" min="1" value="${n(qty0)||1}"></label>
@@ -1017,6 +1164,13 @@ function printForm(pid, qty0){
       $("#rcalc").innerHTML = `<div>Filament<b>${g(r.usage.reduce((a,u)=>a+u.grams,0))} g</b></div><div>Batch cost<b>${money(c)}</b></div><div>Per unit<b>${money(c/r.qty)}</b></div><div>Stock after<b>${n(p.stock)+r.goodQty}</b></div>${r.progress<100?`<div class="full" style="grid-column:1/-1">Counting ${r.progress}% of the filament and time: ${g(r.usage.reduce((a,u)=>a+u.grams,0))} g, ${hrs(r.minutes)}.</div>`:""}${over?`<div class="full alert bad" style="grid-column:1/-1">${esc(spool(over.id).name.trim())} only has ${g(spool(over.id).remaining)} g left.</div>`:""}`; };
     $("#r_p").onchange = fill; $("#r_qty").oninput = () => { fill(); syncResult(m); }; m.addEventListener("input", e => { if (e.target.id!=="r_qty") calc(); }); m.addEventListener("change", () => { syncResult(m); calc(); });
     fill(); syncResult(m);
+    wireDrop($("#r_bb"), {purpose:"print", apply: r => {
+      $("#r_qty").value = r.units; $("#r_min").value = Math.round(r.seconds/60);
+      m.querySelectorAll("[data-use]").forEach(i => { i.value = 0; });
+      r.items.forEach(it => { const i = m.querySelector(`[data-use="${it.spoolId}"]`); if (i){ i.value = it.grams; const d = i.closest("details"); if (d) d.open = true; } });
+      if (!$("#r_notes").value) $("#r_notes").value = "From " + r.name;
+      syncResult(m); calc(); toast("Filled from " + r.name);
+    }});
     m.querySelector("[data-x]").onclick = close;
     $("#rsave").onclick = () => { try{ const r = read(); logPrint(r); close(); render(); toast(r.goodQty>=r.qty ? "Print logged · stock +"+r.goodQty : r.goodQty>0 ? `Logged · ${r.goodQty} good, ${r.qty-r.goodQty} wasted` : "Failed print logged as waste"); }catch(e){ console.error(e); toast("Couldn't save the print: "+(e.message||e)); } };
   });
