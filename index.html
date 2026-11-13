@@ -140,6 +140,14 @@ tbody tr:hover{background:var(--sunk)}
 .vsec h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
 .vrow{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line);font-size:14px}
 .vrow:last-child{border-bottom:0}
+.act{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;padding:9px 0;border-bottom:1px dashed var(--line);font-size:14px}
+.act:last-child{border-bottom:0}
+.act .what{font-weight:600}
+.act .side{text-align:right;white-space:nowrap}
+.act .after{font-size:12px;color:var(--muted)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+.chips button{all:unset;cursor:pointer;font-size:12px;font-weight:600;padding:4px 10px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.chips button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .photo-pick{display:flex;gap:12px;align-items:center}
 .photo-pick img{width:72px;height:72px;border-radius:10px;object-fit:cover;background:var(--sunk)}
 .drop{border:1.5px dashed var(--line);border-radius:10px;padding:12px 14px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;color:var(--muted);font-size:13px}
@@ -263,9 +271,9 @@ body.ro [data-count]{border-color:transparent;background:transparent}
 
 <script>
 (() => {
-const KEYS = ["products","spools","prints","orders","moves","fil","ideas","lessons","settings","trash"];
-const APP_VERSION = "2026.11.13";
-const blank = () => ({products:[],spools:[],prints:[],orders:[],moves:[],fil:[],ideas:[],lessons:[],settings:{hour:2,energy:0.2,wear:0,failAllow:true,workspace:"WAV",currency:"SAR",feePct:0,packaging:0,targetMargin:50},trash:[]});
+const KEYS = ["products","spools","prints","orders","moves","fil","edits","ideas","lessons","settings","trash"];
+const APP_VERSION = "2026.11.13b";
+const blank = () => ({products:[],spools:[],prints:[],orders:[],moves:[],fil:[],edits:[],ideas:[],lessons:[],settings:{hour:2,energy:0.2,wear:0,failAllow:true,workspace:"WAV",currency:"SAR",feePct:0,packaging:0,targetMargin:50},trash:[]});
 let S = blank();
 let view = "home", db = null, mode = "local", loaded = false, filter = {};
 const LS = "wav-app-v1";
@@ -377,7 +385,7 @@ function mergeState(Lc, Rc){
   const tmap = new Map(); [...Rm.trash, ...L.trash].forEach(t => tmap.set(t.id, t));
   const deadAt = {}; tmap.forEach(t => { const id = t.record && t.record.id; if (id) deadAt[id] = Math.max(deadAt[id]||0, Date.parse(t.deletedAt)||0); });
   const alive = x => x && (!(x.id in deadAt) || (Date.parse(x._restoredAt)||0) > deadAt[x.id]);
-  ["products","spools","prints","orders","moves","fil","ideas","lessons"].forEach(k => {
+  ["products","spools","prints","orders","moves","fil","edits","ideas","lessons"].forEach(k => {
     const m = new Map(); Rm[k].forEach(x => m.set(x.id, x)); L[k].forEach(x => m.set(x.id, x));
     const seen = new Set(), list = [];
     L[k].forEach(x => { if (!seen.has(x.id)){ seen.add(x.id); list.push(m.get(x.id)); } });
@@ -385,7 +393,7 @@ function mergeState(Lc, Rc){
     out[k] = list.filter(alive);
   });
   const by = f => (a,b) => String(b[f]||"").localeCompare(String(a[f]||""));
-  out.prints.sort(by("date")); out.orders.sort(by("created")); out.moves.sort(by("at")); out.fil.sort(by("at"));
+  out.prints.sort(by("date")); out.orders.sort(by("created")); out.moves.sort(by("at")); out.fil.sort(by("at")); out.edits.sort(by("at"));
   out.trash = [...tmap.values()].filter(t => { const id = t.record && t.record.id; return !(out[t.kind]||[]).some(x => x.id === id); }).sort(by("deletedAt")).slice(0,300);
   out.settings = Object.assign({}, Rm.settings, L.settings);
   const lbs = [L.settings.lastBackup, Rm.settings.lastBackup].filter(Boolean).sort(); if (lbs.length) out.settings.lastBackup = lbs.pop();
@@ -855,7 +863,7 @@ function adjustStockForm(p){
     <label class="f">Note<input id="j_n" placeholder="optional"></label>
   </div><div class="foot"><button class="btn" data-x>Cancel</button><button class="btn primary" id="jsave">Save</button></div>`, m => {
     m.querySelector("[data-x]").onclick = close;
-    $("#jsave").onclick = () => { const set = $("#j_set").value.trim(); const target = set!=="" ? n(set) : n(p.stock)+n($("#j_d").value); close(); setStock(p.id, target, $("#j_r").value, $("#j_n").value.trim()); toast("Stock updated"); };
+    $("#jsave").onclick = () => { const set = $("#j_set").value.trim(), target = set!=="" ? n(set) : n(p.stock)+n($("#j_d").value), reason = $("#j_r").value, note = $("#j_n").value.trim(); close(); setStock(p.id, target, reason, note); toast("Stock updated"); };
   });
 }
 function sellForm(p){
@@ -1027,7 +1035,8 @@ function productForm(p){
     $("#p_photo_pick").onclick = () => pickImage(async f => { try{ const b = await shrinkImage(f); newPhoto = f; dropPhoto = false; const im = $("#p_photo_img"); im.src = URL.createObjectURL(b); im.style.visibility = "visible"; $("#p_photo_del").hidden = false; $("#p_photo_pick").textContent = "Change photo"; }catch(e){ toast("Couldn't read that photo. Try a JPEG or PNG."); } });
     $("#p_photo_del").onclick = () => { newPhoto = null; dropPhoto = true; const im = $("#p_photo_img"); im.removeAttribute("src"); im.style.visibility = "hidden"; $("#p_photo_del").hidden = true; $("#p_photo_pick").textContent = "Add photo"; };
     $("#psave").onclick = async () => { try{ read(); if (!p.name){ $("#p_name").focus(); return; }
-      if (newPhoto){ p.photo = await savePhoto(p, newPhoto); } else if (dropPhoto){ p.photo = null; } p.spoolId = ""; recompute(); const typed = n(p.stock), before = isNew ? 0 : n(product(p.id)?.stock); if (!isNew){ const i=S.products.findIndex(x=>x.id===p.id); S.products[i]=p; if (typed!==before) logMove(p.id, typed-before, "Edited in product"); } else { S.products.push(p); ensureLedger(); } persist("products","moves"); close(); render(); toast("Product saved"); }catch(e){ console.error(e); toast("Couldn't save: "+(e.message||e)); } };
+      if (newPhoto){ p.photo = await savePhoto(p, newPhoto); } else if (dropPhoto){ p.photo = null; }
+      logProductEdit(isNew ? null : product(p.id), p); p.spoolId = ""; recompute(); const typed = n(p.stock), before = isNew ? 0 : n(product(p.id)?.stock); if (!isNew){ const i=S.products.findIndex(x=>x.id===p.id); S.products[i]=p; if (typed!==before) logMove(p.id, typed-before, "Edited in product"); } else { S.products.push(p); ensureLedger(); } persist("products","moves"); close(); render(); toast("Product saved"); }catch(e){ console.error(e); toast("Couldn't save: "+(e.message||e)); } };
     if (!isNew) $("#pdel").onclick = () => { close(); trash("products", product(p.id)); render(); };
   });
 }
@@ -1086,6 +1095,48 @@ async function savePhoto(p, file){
 }
 function pickImage(cb){ const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*"; inp.onchange = () => { const f = inp.files[0]; if (f) cb(f); }; inp.click(); }
 
+function recipeSig(p){ return (p.materials||[]).filter(m=>n(m.grams)>0).map(m=>m.spoolId+":"+n(m.grams)).sort().join("|"); }
+function logProductEdit(before, after){
+  const at = new Date().toISOString(), ch = [];
+  if (!before){ S.edits.unshift({id:uid(), product:after.id, at, created:true, changes:[]}); persist("edits"); return; }
+  const f = (label, a, b, show) => { if (String(a ?? "") !== String(b ?? "")) ch.push({label, from: show ? show(a) : a, to: show ? show(b) : b}); };
+  f("Code", before.name, after.name); f("Name", before.type, after.type);
+  f("Category", catOf(before), catOf(after), v => v === "prototype" ? "Prototype" : "Final");
+  f("Price", n(before.price), n(after.price), money); f("Print time", n(before.minutes), n(after.minutes), hrs);
+  f("Minimum stock", n(before.min), n(after.min)); f("Extras", n(before.extras), n(after.extras), money);
+  f("Colour-change waste", n(before.flush), n(after.flush), v => g(v)+" g"); f("NFC chip", !!before.nfc, !!after.nfc, v => v ? "Yes" : "No");
+  if (recipeSig(before) !== recipeSig(after)) ch.push({label:"Recipe", from:g(bomGrams(before))+" g", to:g(bomGrams(after))+" g"});
+  const ph = x => x.photo && x.photo.id; if (ph(before) !== ph(after)) ch.push({label:"Photo", from:"", to: !ph(after) ? "removed" : ph(before) ? "changed" : "added"});
+  if (ch.length){ S.edits.unshift({id:uid(), product:after.id, at, changes:ch}); persist("edits"); }
+}
+function productActivity(pid){
+  const ev = [], when = (a, d) => a || (d ? d+"T12:00:00" : "");
+  S.prints.filter(x => x.product === pid).forEach(pr => {
+    const q = n(pr.qty)||1, gq = goodOf(pr);
+    const res = gq >= q ? "Success" : gq > 0 ? `Partial ${gq}/${q}` : (pr.progress ? `Failed at ${pr.progress}%` : "Failed");
+    ev.push({at:when(pr.at, pr.date), kind:"print", delta:gq, what:`Printed ${q} · ${res}`,
+      detail:[`${g(pr.grams)} g`, hrs(pr.minutes), `${money(pr.cost)} ${cur()}`, pr.failReason, pr.notes].filter(Boolean).join(" · "), tone: gq >= q ? "good" : gq > 0 ? "warn" : "bad"});
+  });
+  S.orders.filter(o => o.status === "delivered").forEach(o => (o.items||[]).filter(i => i.product === pid).forEach(i =>
+    ev.push({at:when(o.deliveredTs, o.deliveredAt || o.created), kind:"sale", delta:-n(i.qty), what:`Sold ${n(i.qty)}`, detail:[o.customer, o.channel, `${money(n(i.qty)*n(i.price))} ${cur()}`, o.paid ? "" : "unpaid"].filter(Boolean).join(" · ")})));
+  S.moves.filter(m => m.product === pid && m.adj).forEach(m => ev.push({at:m.at||m.date, kind:"stock", delta:n(m.delta), what:m.reason || "Stock adjusted", detail:m.note || ""}));
+  S.edits.filter(e => e.product === pid).forEach(e => ev.push({at:e.at, kind:"edit", delta:0, what: e.created ? "Product created" : "Product edited",
+    detail: e.changes.map(c => c.from !== "" ? `${c.label}: ${c.from} → ${c.to}` : `${c.label} ${c.to}`).join(" · ")}));
+  const open = S.moves.find(m => m.id === "open-"+pid);
+  if (open && n(open.delta)) ev.push({at:open.at || S.settings.ledgerAt || "", kind:"stock", delta:n(open.delta), what:"Stock count when tracking began", detail:"Brings the records before this point in line with the stock you had"});
+  ev.sort((a,b) => String(a.at).localeCompare(String(b.at)));
+  let run = 0; ev.forEach(e => { run += e.delta; e.after = run; });
+  return {events:ev.reverse()};
+}
+function activityHTML(pid, kind, limit){
+  const {events} = productActivity(pid), list = events.filter(e => kind === "all" || e.kind === kind);
+  const fmt = iso => { const d = new Date(iso); if (isNaN(d)) return ""; const hasTime = !/T12:00:00/.test(iso); return d.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}) + (hasTime ? " · " + d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}) : ""); };
+  const rows = list.slice(0, limit).map(e => `<div class="act"><div style="min-width:0"><div class="what">${esc(e.what)}${e.tone?` <span class="pill ${e.tone}">${e.tone==="good"?"✓":e.tone==="warn"?"½":"✕"}</span>`:""}</div>${e.detail?`<div class="meta">${esc(e.detail)}</div>`:""}<div class="meta">${fmt(e.at)}</div></div>
+    <div class="side">${e.delta ? `<div class="num" style="font-weight:700;color:var(--${e.delta>0?"good":"bad"})">${e.delta>0?"+":""}${e.delta}</div><div class="after">${e.after} in stock</div>` : ""}</div></div>`).join("");
+  const more = list.length > limit ? `<button class="btn sm ghost" type="button" data-actmore="${limit+20}">Show ${Math.min(20, list.length-limit)} more</button>` : "";
+  return (rows || `<p class="meta">Nothing here yet.</p>`) + more;
+}
+
 function productView(pid){
   recompute(); const p = product(pid); if (!p) return;
   const k = costParts(p), c = k.total, pr = n(p.price) - c, mg = n(p.price) ? pr/n(p.price)*100 : 0, rsv = reserved(p.id), can = canMake(p);
@@ -1117,8 +1168,13 @@ function productView(pid){
       <div class="vrow"><span>Printed</span><span class="num">${units} pieces in ${prints.length} prints${units?` · ${Math.round(good/units*100)}% good`:""}</span></div>
       <div class="vrow"><span>Last printed</span><span class="num">${last?fmtDate(last):"—"}</span></div>
       <div class="vrow"><span>Sold</span><span class="num">${soldU} pieces · ${money(rev)} ${cur()}</span></div></div>
+    <div class="vsec"><h4>Activity</h4><div class="chips" role="group" aria-label="Show">${[["all","All"],["print","Prints"],["sale","Sales"],["stock","Stock changes"],["edit","Edits"]].map(([k,l])=>`<button type="button" data-actk="${k}" aria-pressed="${k==="all"}">${l}</button>`).join("")}</div><div id="actlist">${activityHTML(p.id, "all", 15)}</div></div>
     <div class="foot"><button class="btn" data-x>Close</button><button class="btn" data-sell="${p.id}" ${n(p.stock)>0?"":"disabled"}>Sell</button><button class="btn" data-print="${p.id}">Print</button><button class="btn primary" data-editp="${p.id}">Edit</button></div>`, m => {
     m.querySelector("[data-x]").onclick = close; hydratePhotos(m);
+    let ak = "all";
+    const showAct = lim => { $("#actlist").innerHTML = activityHTML(p.id, ak, lim); const mb = m.querySelector("[data-actmore]"); if (mb) mb.onclick = () => showAct(+mb.dataset.actmore); };
+    m.querySelectorAll("[data-actk]").forEach(b => b.onclick = () => { ak = b.dataset.actk; m.querySelectorAll("[data-actk]").forEach(x => x.setAttribute("aria-pressed", x === b)); showAct(15); });
+    showAct(15);
     const go = (sel, fn) => { const b = m.querySelector(sel); if (b) b.onclick = () => { close(); fn(); }; };
     go("[data-sell]", () => sellForm(p)); go("[data-print]", () => printForm(p.id)); go("[data-editp]", () => productForm(product(p.id)));
     const ab = $("#pv_photo"); if (ab) ab.onclick = () => pickImage(async f => { try{ toast("Saving photo…"); const ph = await savePhoto(p, f); const cur0 = product(p.id); cur0.photo = ph; persist("products"); render(); productView(p.id); toast("Photo added"); }catch(e){ toast(e.message); } });
