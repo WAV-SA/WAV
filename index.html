@@ -132,8 +132,9 @@ tbody tr:hover{background:var(--sunk)}
 [data-viewp]:hover .name{text-decoration:underline;text-underline-offset:3px}
 .hero{width:100%;aspect-ratio:4/3;max-height:320px;object-fit:cover;border-radius:12px;background:var(--sunk);display:block}
 .hero.ph{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:var(--muted);font-size:13px;border:1.5px dashed var(--line);background:transparent;aspect-ratio:16/7}
-.vgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:14px 0}
+.vgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:14px 0}
 .vgrid>div{background:var(--surface);padding:10px 12px}
+@media (max-width:560px){.vgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .vgrid b{display:block;font-family:var(--f-mono);font-size:17px;margin-top:2px}
 .vsec{margin-top:16px}
 .vsec h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
@@ -263,7 +264,7 @@ body.ro [data-count]{border-color:transparent;background:transparent}
 <script>
 (() => {
 const KEYS = ["products","spools","prints","orders","moves","fil","ideas","lessons","settings","trash"];
-const APP_VERSION = "2026.11.12e";
+const APP_VERSION = "2026.11.13";
 const blank = () => ({products:[],spools:[],prints:[],orders:[],moves:[],fil:[],ideas:[],lessons:[],settings:{hour:2,energy:0.2,wear:0,failAllow:true,workspace:"WAV",currency:"SAR",feePct:0,packaging:0,targetMargin:50},trash:[]});
 let S = blank();
 let view = "home", db = null, mode = "local", loaded = false, filter = {};
