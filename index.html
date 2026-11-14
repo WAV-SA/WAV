@@ -272,7 +272,7 @@ body.ro [data-count]{border-color:transparent;background:transparent}
 <script>
 (() => {
 const KEYS = ["products","spools","prints","orders","moves","fil","edits","ideas","lessons","settings","trash"];
-const APP_VERSION = "2026.11.13c";
+const APP_VERSION = "2026.11.14";
 const blank = () => ({products:[],spools:[],prints:[],orders:[],moves:[],fil:[],edits:[],ideas:[],lessons:[],settings:{hour:2,energy:0.2,wear:0,failAllow:true,workspace:"WAV",currency:"SAR",feePct:0,packaging:0,targetMargin:50},trash:[]});
 let S = blank();
 let view = "home", db = null, mode = "local", loaded = false, filter = {};
@@ -799,7 +799,7 @@ function vProducts(){
     const c = unitCost(p), m = n(p.price)?(n(p.price)-c)/n(p.price)*100:0, st = stockState(p);
     return `<tr><td>${pname(p)}</td>
     <td><div class="swrow">${(p.materials||[]).map(mm=>{const s=spool(mm.spoolId);return `<span class="sw" title="${esc(s?.name||"?")} ${g(mm.grams)} g" style="background:${hex(s?.color)}"></span>`}).join("")}<span class="meta num" style="margin-left:6px">${g(bomGrams(p))} g</span></div></td>
-    <td class="r num">${hrs(p.minutes)}</td><td class="r num">${money(c)}</td><td class="r num">${money(p.price)}</td>
+    <td class="r num">${hrs(p.minutes)}</td><td class="r num">${money(c)}</td><td class="r num">${money(p.price)}${suggestPrice(c)?`<div class="meta">suggested ${money(suggestPrice(c))}</div>`:""}</td>
     <td class="r k"><span class="pill ${m>=50?"good":m>=25?"warn":"bad"}">${Math.round(m)}%</span></td>
     <td class="r k"><span class="pill ${st}">${n(p.stock)} / ${n(p.min)}</span></td>
     <td class="r"><div class="row" style="justify-content:flex-end;flex-wrap:nowrap"><button class="btn sm" data-print="${p.id}">Print</button><button class="btn sm ghost" data-editp="${p.id}">Edit</button></div></td></tr>`;}).join("")}</tbody></table></div>`
@@ -1155,7 +1155,7 @@ function productView(pid){
   modal(p.name, `${p.photo ? `<img class="hero" data-photo="${p.id}" alt="${esc(p.name)}">` : `<div class="hero ph ro-hide"><span>No photo yet</span><button class="btn sm" id="pv_photo" type="button">Add photo</button></div>`}
     <div class="row" style="justify-content:space-between;margin-top:12px"><div><div class="name" style="font-size:16px">${esc(p.type)||"&nbsp;"}</div><div class="meta">${catOf(p)==="prototype"?"Prototype · still testing":"Final product · ready to sell"}${p.nfc?" · NFC chip":""}</div></div>${catPill(p)}</div>
     <div class="vgrid">
-      <div><span class="meta">Price</span><b>${money(p.price)}</b></div>
+      <div><span class="meta">Price</span><b>${money(p.price)}</b>${suggestPrice(c)?`<span class="meta">suggested ${money(suggestPrice(c))}</span>`:""}</div>
       <div><span class="meta">Unit cost</span><b>${money(c)}</b></div>
       <div><span class="meta">Profit per piece</span><b style="color:var(--${pr>=0?"good":"bad"})">${money(pr)}</b><span class="pill ${mg>=50?"good":mg>=25?"warn":"bad"}">${Math.round(mg)}%</span></div>
       <div><span class="meta">In stock</span><b>${n(p.stock)}</b><span class="meta">${rsv?`${rsv} reserved · `:""}min ${n(p.min)}</span></div>
