@@ -210,7 +210,7 @@ textarea{min-height:80px;resize:vertical}
   .kv{font-size:20px}
 }
 .mobile-only,.fab,.nav button.mobile-only{display:none}
-body.ro .fab,body.ro [data-act]:not([data-act="syncNow"]):not([data-act="syncOff"]):not([data-act="export"]),body.ro [data-step],body.ro [data-sell],body.ro [data-adjp],body.ro [data-editp],body.ro [data-print],body.ro [data-edits],body.ro [data-adj],body.ro [data-edito],body.ro [data-delpr],body.ro [data-note],body.ro [data-editn],body.ro [data-restore],body.ro .ro-hide{display:none!important}
+body.ro [data-edite],body.ro [data-estop],body.ro .fab,body.ro [data-act]:not([data-act="syncNow"]):not([data-act="syncOff"]):not([data-act="export"]),body.ro [data-step],body.ro [data-sell],body.ro [data-adjp],body.ro [data-editp],body.ro [data-print],body.ro [data-edits],body.ro [data-adj],body.ro [data-edito],body.ro [data-delpr],body.ro [data-note],body.ro [data-editn],body.ro [data-restore],body.ro .ro-hide{display:none!important}
 body.ro [data-res],body.ro [data-paid],body.ro [data-count],body.ro [data-ostatus],body.ro .ro-lock{pointer-events:none}
 body.ro [data-count]{border-color:transparent;background:transparent}
 .sheet{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
@@ -271,9 +271,9 @@ body.ro [data-count]{border-color:transparent;background:transparent}
 
 <script>
 (() => {
-const KEYS = ["products","spools","prints","orders","moves","fil","edits","ideas","lessons","settings","trash"];
-const APP_VERSION = "2026.11.14";
-const blank = () => ({products:[],spools:[],prints:[],orders:[],moves:[],fil:[],edits:[],ideas:[],lessons:[],settings:{hour:2,energy:0.2,wear:0,failAllow:true,workspace:"WAV",currency:"SAR",feePct:0,packaging:0,targetMargin:50},trash:[]});
+const KEYS = ["products","spools","prints","orders","moves","fil","edits","expenses","ideas","lessons","settings","trash"];
+const APP_VERSION = "2026.11.15";
+const blank = () => ({products:[],spools:[],prints:[],orders:[],moves:[],fil:[],edits:[],expenses:[],ideas:[],lessons:[],settings:{hour:2,energy:0.2,wear:0,failAllow:true,workspace:"WAV",currency:"SAR",feePct:0,packaging:0,targetMargin:50},trash:[]});
 let S = blank();
 let view = "home", db = null, mode = "local", loaded = false, filter = {};
 const LS = "wav-app-v1";
@@ -385,7 +385,7 @@ function mergeState(Lc, Rc){
   const tmap = new Map(); [...Rm.trash, ...L.trash].forEach(t => tmap.set(t.id, t));
   const deadAt = {}; tmap.forEach(t => { const id = t.record && t.record.id; if (id) deadAt[id] = Math.max(deadAt[id]||0, Date.parse(t.deletedAt)||0); });
   const alive = x => x && (!(x.id in deadAt) || (Date.parse(x._restoredAt)||0) > deadAt[x.id]);
-  ["products","spools","prints","orders","moves","fil","edits","ideas","lessons"].forEach(k => {
+  ["products","spools","prints","orders","moves","fil","edits","expenses","ideas","lessons"].forEach(k => {
     const m = new Map(); Rm[k].forEach(x => m.set(x.id, x)); L[k].forEach(x => m.set(x.id, x));
     const seen = new Set(), list = [];
     L[k].forEach(x => { if (!seen.has(x.id)){ seen.add(x.id); list.push(m.get(x.id)); } });
@@ -393,7 +393,7 @@ function mergeState(Lc, Rc){
     out[k] = list.filter(alive);
   });
   const by = f => (a,b) => String(b[f]||"").localeCompare(String(a[f]||""));
-  out.prints.sort(by("date")); out.orders.sort(by("created")); out.moves.sort(by("at")); out.fil.sort(by("at")); out.edits.sort(by("at"));
+  out.prints.sort(by("date")); out.orders.sort(by("created")); out.moves.sort(by("at")); out.fil.sort(by("at")); out.edits.sort(by("at")); out.expenses.sort(by("date"));
   out.trash = [...tmap.values()].filter(t => { const id = t.record && t.record.id; return !(out[t.kind]||[]).some(x => x.id === id); }).sort(by("deletedAt")).slice(0,300);
   out.settings = Object.assign({}, Rm.settings, L.settings);
   const lbs = [L.settings.lastBackup, Rm.settings.lastBackup].filter(Boolean).sort(); if (lbs.length) out.settings.lastBackup = lbs.pop();
@@ -691,7 +691,7 @@ const spoolOptions = sel => S.spools.map(s => `<option value="${s.id}" ${s.id===
 
 /* ---------- nav ---------- */
 const VIEWS = [
-  ["home","Overview"],["stock","Inventory"],["orders","Orders"],["reports","Sales"],["products","Products"],["prints","Print log"],["spools","Filament"],
+  ["home","Overview"],["stock","Inventory"],["orders","Orders"],["reports","Sales"],["expenses","Expenses"],["products","Products"],["prints","Print log"],["spools","Filament"],
   ["notes","Ideas & lessons"],["settings","Settings"]
 ];
 function counts(k){
@@ -701,6 +701,7 @@ function counts(k){
   if (k==="spools") return S.spools.filter(s=>spoolState(s)!=="good").length || S.spools.length;
   if (k==="orders") return S.orders.filter(o=>o.status!=="delivered" && o.status!=="cancelled").length || "";
   if (k==="notes") return S.ideas.length + S.lessons.length || "";
+  if (k==="expenses") return "";
   return "";
 }
 const ICON = {
@@ -726,7 +727,7 @@ function go(v){ view = v; try{ history.replaceState(null,"","#"+v); }catch(e){} 
 function render(){
   recompute();
   renderNav();
-  const fn = {home:vHome, stock:vStock, reports:vReports, products:vProducts, prints:vPrints, spools:vSpools, orders:vOrders, notes:vNotes, settings:vSettings}[view] || vHome;
+  const fn = {home:vHome, stock:vStock, reports:vReports, expenses:vExpenses, products:vProducts, prints:vPrints, spools:vSpools, orders:vOrders, notes:vNotes, settings:vSettings}[view] || vHome;
   $("#main").innerHTML = fn();
   $("#main").querySelectorAll(".tablewrap table").forEach(t => { const hs = [...t.querySelectorAll("thead th")].map(th => th.textContent.trim()); t.querySelectorAll("tbody tr").forEach(tr => [...tr.children].forEach((td,i) => td.setAttribute("data-label", hs[i]||""))); });
   $("#main").querySelectorAll("table[data-compact] tbody tr").forEach(tr => { tr.classList.add("cx"); const td = tr.firstElementChild; if (!td) return;
@@ -884,6 +885,80 @@ function sellForm(p){
   });
 }
 
+/* ---------- expenses ---------- */
+const EXP_CATS = ["Filament","Printer & parts","Tools & equipment","Packaging","Shipping","Marketing & ads","Subscriptions","Electricity","Rent","Other"];
+const ym = d => String(d||"").slice(0,7);
+function monthsBack(k){ const out = [], d = new Date(); d.setDate(1); for (let i=k-1;i>=0;i--){ const x = new Date(d.getFullYear(), d.getMonth()-i, 1); out.push(x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")); } return out; }
+/* Each expense once, monthly ones once per month from their start until stopped (never in the future). */
+function expenseItems(){
+  const out = [], nowM = ym(today());
+  S.expenses.forEach(e => {
+    if (e.repeat !== "monthly"){ out.push({e, date:e.date, amount:n(e.amount)}); return; }
+    let [y, m] = ym(e.date).split("-").map(Number); const day = String(e.date||"").slice(8,10) || "01", stop = e.stopped ? ym(e.stopped) : nowM;
+    for (let guard = 0; guard < 240; guard++){ const key = y+"-"+String(m).padStart(2,"0"); if (key > stop || key > nowM) break;
+      const last = new Date(y, m, 0).getDate(); out.push({e, date:key+"-"+String(Math.min(+day, last)).padStart(2,"0"), amount:n(e.amount), recurring:true});
+      m++; if (m > 12){ m = 1; y++; } }
+  });
+  return out.sort((a,b) => b.date.localeCompare(a.date));
+}
+const inPeriod = (date, per) => { const k = ym(date); return per === "all" || (per === "month" ? k === ym(today()) : monthsBack(3).includes(k)); };
+/* Categories whose cost is already inside each product's unit cost, so profit doesn't count them twice */
+function costedCats(){ const c = ["Filament"]; if (n(S.settings.energy)) c.push("Electricity"); if (n(S.settings.wear)) c.push("Printer & parts"); return c; }
+function vExpenses(){
+  const per = filter.ep || "month", items = expenseItems(), list = items.filter(x => inPeriod(x.date, per));
+  const total = list.reduce((a,x)=>a+x.amount,0), monthly = S.expenses.filter(e => e.repeat === "monthly" && !e.stopped);
+  const byCat = {}; list.forEach(x => byCat[x.e.category||"Other"] = (byCat[x.e.category||"Other"]||0) + x.amount);
+  const byPayer = {}; list.forEach(x => { const k = (x.e.paidBy||"").trim() || "Not set"; byPayer[k] = (byPayer[k]||0) + x.amount; });
+  const months = {}; list.forEach(x => (months[ym(x.date)] = months[ym(x.date)] || []).push(x));
+  const topCat = Object.entries(byCat).sort((a,b)=>b[1]-a[1])[0];
+  const mname = k => new Date(k+"-01T00:00:00").toLocaleDateString("en-GB",{month:"long",year:"numeric"});
+  return head("Expenses", "Purchases and running costs. Monthly costs repeat on their own.", `<div class="tabs">${[["month","This month"],["q","Last 3 months"],["all","All time"]].map(([k,l])=>`<button data-ep="${k}" aria-pressed="${per===k}">${l}</button>`).join("")}</div><button class="btn primary" data-act="newExpense">Add expense</button>`) + `
+  <div class="strip">
+    <div><div class="eyebrow">Spent</div><div class="kv">${money(total)}<small>${cur()}</small></div><div class="kd">${list.length} item${list.length===1?"":"s"}</div></div>
+    <div><div class="eyebrow">Monthly costs</div><div class="kv">${money(monthly.reduce((a,e)=>a+n(e.amount),0))}<small>${cur()}</small></div><div class="kd">${monthly.length} repeating</div></div>
+    <div><div class="eyebrow">Biggest category</div><div class="kv" style="font-size:18px">${topCat?esc(topCat[0]):"—"}</div><div class="kd">${topCat?money(topCat[1])+" "+cur():"&nbsp;"}</div></div>
+    <div><div class="eyebrow">All time</div><div class="kv">${money(items.reduce((a,x)=>a+x.amount,0))}<small>${cur()}</small></div><div class="kd">since the first expense</div></div>
+  </div>
+  <div class="grid2">
+    <section class="panel"><h2>Expenses</h2>${list.length ? Object.keys(months).sort().reverse().map(k => `<div class="eyebrow" style="margin:12px 0 4px">${mname(k)} · ${money(months[k].reduce((a,x)=>a+x.amount,0))}</div><div class="list" style="gap:0">${months[k].map(x => `<div class="item"><div class="pname" style="min-width:0">${x.e.receipt?`<img class="thumb" data-ephoto="${x.e.id}" alt="" width="44" height="44">`:""}<div style="min-width:0"><div class="name">${esc(x.e.desc||x.e.category)}${x.recurring?` <span class="pill neutral">Monthly</span>`:""}</div><div class="meta">${fmtDate(x.date)} · ${esc(x.e.category||"Other")}${x.e.paidBy?" · paid by "+esc(x.e.paidBy):""}</div></div></div><div class="row" style="flex-wrap:nowrap;gap:6px"><span class="num" style="font-weight:600">${money(x.amount)}</span><button class="btn sm ghost" data-edite="${x.e.id}">Edit</button></div></div>`).join("")}</div>`).join("") : `<div class="empty">No expenses in this period. Add purchases like filament, nozzles, packaging, ads or your store subscription.</div>`}</section>
+    <div class="list" style="gap:20px">
+      <section class="panel"><h2>By category</h2>${Object.keys(byCat).length ? Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([k,v]) => `<div style="margin-bottom:10px"><div class="row" style="justify-content:space-between"><span>${esc(k)}${costedCats().includes(k)?` <span class="meta">· in unit cost</span>`:""}</span><span class="num">${money(v)}</span></div><div class="bar" style="margin-top:5px"><i style="width:${total?v/total*100:0}%;background:var(--accent)"></i></div></div>`).join("") : `<p class="meta">Nothing yet.</p>`}</section>
+      <section class="panel"><h2>Monthly costs</h2>${monthly.length ? `<div class="list" style="gap:0">${monthly.map(e => `<div class="item"><div><div class="name">${esc(e.desc||e.category)}</div><div class="meta">${esc(e.category)} · since ${fmtDate(e.date)}</div></div><div class="row" style="flex-wrap:nowrap;gap:6px"><span class="num">${money(e.amount)}</span><button class="btn sm ghost" data-estop="${e.id}">Stop</button></div></div>`).join("")}</div>` : `<p class="meta">Tick "Repeats every month" on an expense, like your store plan or rent.</p>`}</section>
+      ${Object.keys(byPayer).length > 1 || (Object.keys(byPayer)[0] && Object.keys(byPayer)[0] !== "Not set") ? `<section class="panel"><h2>Paid by</h2>${Object.entries(byPayer).sort((a,b)=>b[1]-a[1]).map(([k,v]) => `<div class="item"><span>${esc(k)}</span><span class="num">${money(v)}</span></div>`).join("")}</section>` : ""}
+    </div>
+  </div>`;
+}
+function expenseForm(e, preset){
+  const isNew = !e; e = e ? {...e} : Object.assign({id:uid(), date:today(), amount:0, category:"Other", desc:"", paidBy:S.settings.lastPayer||"", repeat:"", receipt:null}, preset||{});
+  const payers = [...new Set(S.expenses.map(x => (x.paidBy||"").trim()).filter(Boolean))];
+  modal(isNew?"Add expense":"Edit expense", `<div class="form">
+    <label class="f">Amount (${cur()})<input id="e_amt" type="number" step="0.01" min="0" inputmode="decimal" value="${n(e.amount)||""}"></label>
+    <label class="f">Date<input id="e_date" type="date" value="${esc(e.date)}"></label>
+    <label class="f full">What was it<input id="e_desc" value="${esc(e.desc)}" placeholder="e.g. 0.4 nozzle pack, Zid Rise plan, gift boxes"></label>
+    <label class="f">Category<select id="e_cat">${EXP_CATS.map(c=>`<option ${c===e.category?"selected":""}>${c}</option>`).join("")}</select></label>
+    <label class="f">Paid by<input id="e_payer" list="payers" value="${esc(e.paidBy)}" placeholder="optional"><datalist id="payers">${payers.map(x=>`<option value="${esc(x)}">`).join("")}</datalist></label>
+    <label class="f check full"><input id="e_rep" type="checkbox" ${e.repeat==="monthly"?"checked":""}> Repeats every month (subscription, rent…)</label>
+    <div class="f full"><span>Receipt (optional)</span><div class="photo-pick"><img id="e_img" ${e.receipt?`data-ephoto="${e.id}"`:'style="visibility:hidden"'} alt=""><div class="row"><button class="btn sm" type="button" id="e_pick">${e.receipt?"Change":"Add receipt"}</button><button class="btn sm ghost danger" type="button" id="e_del_img" ${e.receipt?"":"hidden"}>Remove</button></div></div></div>
+    <p class="meta full" id="e_hint"></p>
+  </div><div class="foot">${isNew?"":`<button class="btn danger" id="edel" style="margin-right:auto">Delete</button>`}<button class="btn" data-x>Cancel</button><button class="btn primary" id="esave">Save</button></div>`, m => {
+    let newImg = null, dropImg = false; hydratePhotos(m);
+    const hint = () => { const c = $("#e_cat").value; $("#e_hint").textContent = costedCats().includes(c) ? `${c} is already counted inside each product's cost, so the sales report won't subtract it again from profit. It still shows in your cash spent.` : ""; };
+    $("#e_cat").onchange = hint; hint();
+    m.querySelector("[data-x]").onclick = close;
+    $("#e_pick").onclick = () => pickImage(async f => { try{ const b = await shrinkImage(f); newImg = f; dropImg = false; const im = $("#e_img"); im.src = URL.createObjectURL(b); im.style.visibility = "visible"; $("#e_del_img").hidden = false; }catch(err){ toast("Couldn't read that photo."); } });
+    $("#e_del_img").onclick = () => { newImg = null; dropImg = true; const im = $("#e_img"); im.removeAttribute("src"); im.style.visibility = "hidden"; $("#e_del_img").hidden = true; };
+    $("#esave").onclick = async () => {
+      const amt = n($("#e_amt").value); if (!(amt > 0)){ toast("Enter the amount"); $("#e_amt").focus(); return; }
+      Object.assign(e, {amount:amt, date:$("#e_date").value || today(), desc:$("#e_desc").value.trim(), category:$("#e_cat").value, paidBy:$("#e_payer").value.trim(), repeat:$("#e_rep").checked ? "monthly" : ""});
+      if (newImg){ try{ e.receipt = await savePhoto(null, newImg); }catch(err){ toast(err.message); return; } } else if (dropImg) e.receipt = null;
+      if (e.paidBy) S.settings.lastPayer = e.paidBy;
+      if (isNew) S.expenses.unshift(e); else S.expenses[S.expenses.findIndex(x => x.id === e.id)] = e;
+      persist("expenses","settings"); close(); render(); toast(isNew ? "Expense added" : "Expense saved");
+    };
+    if (!isNew) $("#edel").onclick = () => { close(); trash("expenses", S.expenses.find(x => x.id === e.id)); render(); };
+  });
+}
+
 function vReports(){
   const per = filter.rp || "all";
   const now = today().slice(0,7);
@@ -903,6 +978,18 @@ function vReports(){
     <div><div class="eyebrow">Units sold</div><div class="kv">${units}</div><div class="kd">avg order ${money(sold.length?rev/sold.length:0)}</div></div>
     <div><div class="eyebrow">Customers</div><div class="kv">${Object.keys(cu).length}</div><div class="kd">${repeat} came back</div></div>
   </div>
+  ${(() => { const ex = expenseItems().filter(x => inPeriod(x.date, per === "q" ? "q" : per)), cc = costedCats();
+      const over = ex.filter(x => !cc.includes(x.e.category)).reduce((a,x)=>a+x.amount,0), spent = ex.reduce((a,x)=>a+x.amount,0);
+      const received = S.orders.filter(o => o.status !== "cancelled").reduce((a,o) => { const d = o.paid ? (o.deliveredAt || o.created) : o.created; const amt = o.paid ? orderTotal(o) : n(o.custom?.deposit); return a + (inPeriod(d, per) ? amt : 0); }, 0);
+      const after = net - over;
+      return `<section class="panel" style="margin-bottom:20px"><h2>Profit after expenses</h2>
+        <div class="vrow"><span>Revenue</span><span class="num">${money(rev)}</span></div>
+        <div class="vrow"><span>Product costs, fees, shipping</span><span class="num">−${money(rev-net)}</span></div>
+        <div class="vrow"><b>Profit from sales</b><b class="num">${money(net)}</b></div>
+        <div class="vrow"><span>Running expenses <span class="meta">(not already in unit cost)</span></span><span class="num">−${money(over)}</span></div>
+        <div class="vrow"><b>Profit after expenses</b><b class="num" style="color:var(--${after>=0?"good":"bad"})">${money(after)} ${cur()}</b></div>
+        <div class="row" style="justify-content:space-between;margin-top:12px;gap:12px"><span class="meta">Cash in (payments and deposits): <b class="num">${money(received)}</b></span><span class="meta">Cash out (all expenses): <b class="num">${money(spent)}</b></span></div>
+        <p class="meta" style="margin:8px 0 0">${cc.join(", ")} ${cc.length>1?"are":"is"} left out of running expenses because ${cc.length>1?"they're":"it's"} already inside each product's cost. <a href="#expenses">Open expenses</a></p></section>`; })()}
   <section class="panel" style="margin-bottom:20px"><div class="row" style="justify-content:space-between"><h2>Last 6 months</h2><span class="row meta" style="gap:12px"><span class="row" style="gap:5px"><i class="sw" style="background:var(--accent);border:0;border-radius:2px"></i>Revenue</span><span class="row" style="gap:5px"><i class="sw" style="background:var(--good);border:0;border-radius:2px"></i>Net profit</span></span></div>${barChart(mdata)}</section>
   <div class="grid2">
     <section class="panel"><h2>Best sellers</h2>${Object.keys(by).length?`<div class="tablewrap" style="border:0"><table><thead><tr><th>Product</th><th class="r">Units</th><th class="r">Revenue</th></tr></thead><tbody>${Object.entries(by).sort((a,b)=>b[1].u-a[1].u).map(([k,v])=>`<tr><td><div class="name">${k==="__special"?"Special orders":esc(product(k)?.name||"Deleted")}</div><div class="meta">${k==="__special"?"custom work":esc(product(k)?.type||"")}</div></td><td class="r num">${v.u}</td><td class="r num">${money(v.r)}</td></tr>`).join("")}</tbody></table></div>`:`<p class="meta">No delivered orders in this period. Record sales from Orders or the Sell button in Inventory.</p>`}</section>
@@ -1091,6 +1178,7 @@ async function photoURL(ph){
 }
 function hydratePhotos(root){
   (root||document).querySelectorAll("img[data-photo]").forEach(async img => { const p = product(img.dataset.photo); const u = p && await photoURL(p.photo); if (u) img.src = u; else img.style.visibility = "hidden"; });
+  (root||document).querySelectorAll("img[data-ephoto]").forEach(async img => { const x = S.expenses.find(e => e.id === img.dataset.ephoto); const u = x && await photoURL(x.receipt); if (u) img.src = u; else img.style.visibility = "hidden"; });
   (root||document).querySelectorAll("img[data-ophoto]").forEach(async img => { const o = S.orders.find(x => x.id === img.dataset.ophoto); const u = o && await photoURL(o.custom?.photo); if (u) img.src = u; else img.style.visibility = "hidden"; });
 }
 const thumb = p => p && p.photo ? `<img class="thumb" data-photo="${p.id}" alt="" width="44" height="44">` : "";
@@ -1439,13 +1527,16 @@ function spoolForm(s){
     <label class="f">Net weight (g)<input id="s_init" type="number" value="${n(s.initial)}"></label>
     <label class="f">Remaining (g)<input id="s_rem" type="number" step="0.01" value="${n(s.remaining)}"></label>
     <label class="f">Alert below (g)<input id="s_min" type="number" value="${n(s.min)}"></label>
+    ${isNew?`<label class="f check full"><input id="s_exp" type="checkbox" checked> Record the spool price as an expense</label>`:""}
   </div><div class="foot">${isNew?"":`<button class="btn danger" id="sdel" style="margin-right:auto">Delete</button>`}${isNew?"":`<button class="btn" id="sdup">Duplicate</button>`}<button class="btn" data-x>Cancel</button><button class="btn primary" id="ssave">Save</button></div>`, m => {
     const read = () => Object.assign(s,{name:$("#s_name").value, color:$("#s_color").value, price:n($("#s_price").value), initial:n($("#s_init").value), remaining:n($("#s_rem").value), min:n($("#s_min").value)});
     m.querySelector("[data-x]").onclick = close;
-    $("#ssave").onclick = () => { recompute(); const was = isNew ? 0 : n(spool(s.id)?.remaining); read(); if (isNew){ S.spools.push(s); ensureLedger(); } else { S.spools[S.spools.findIndex(x=>x.id===s.id)] = s; if (n(s.remaining)!==was) logFil(s.id, n(s.remaining)-was, "Edited"); } persist("spools","fil"); close(); render(); toast("Spool saved"); };
+    $("#ssave").onclick = () => { recompute(); const was = isNew ? 0 : n(spool(s.id)?.remaining); read(); if (isNew){ S.spools.push(s); ensureLedger(); if ($("#s_exp") && $("#s_exp").checked && n(s.price) > 0){ S.expenses.unshift({id:uid(), date:today(), amount:n(s.price), category:"Filament", desc:s.name.trim()+" spool", paidBy:"", spool:s.id}); persist("expenses"); } } else { S.spools[S.spools.findIndex(x=>x.id===s.id)] = s; if (n(s.remaining)!==was) logFil(s.id, n(s.remaining)-was, "Edited"); } persist("spools","fil"); close(); render(); toast("Spool saved"); };
     if (!isNew){
       $("#sdel").onclick = () => { const used = S.products.filter(p=>(p.materials||[]).some(mm=>mm.spoolId===s.id)); close(); if (used.length) confirmBox(`${used.map(p=>p.name).join(", ")} use this spool. Their cost will drop the filament part.`, "Delete anyway", ()=>{ trash("spools", spool(s.id)); render(); }); else { trash("spools", spool(s.id)); render(); } };
-      $("#sdup").onclick = () => { read(); const c = {...s, id:uid(), remaining:n(s.initial)}; S.spools.push(c); ensureLedger(); persist("spools","fil"); close(); render(); toast("New full spool added"); };
+      $("#sdup").onclick = () => { read(); const c = {...s, id:uid(), remaining:n(s.initial)}; S.spools.push(c); ensureLedger();
+        const ex = n(c.price) > 0 ? {id:uid(), date:today(), amount:n(c.price), category:"Filament", desc:c.name.trim()+" spool", paidBy:"", spool:c.id} : null; if (ex) S.expenses.unshift(ex);
+        persist("spools","fil","expenses"); close(); render(); toast(ex ? "New full spool added and recorded as an expense" : "New full spool added", ex ? () => { S.expenses = S.expenses.filter(x => x.id !== ex.id); persist("expenses"); render(); toast("Expense removed, spool kept"); } : null); };
     }
   });
 }
@@ -1591,7 +1682,7 @@ function bind(){
   const M = $("#main");
   M.querySelectorAll("[data-go]").forEach(b => b.onclick = () => go(b.dataset.go));
   M.querySelectorAll("[data-act]").forEach(b => b.onclick = () => ({
-    newProduct:()=>productForm(), newPrint:()=>printForm(), newSpool:()=>spoolForm(), newOrder:()=>orderForm(),
+    newExpense:()=>expenseForm(), newProduct:()=>productForm(), newPrint:()=>printForm(), newSpool:()=>spoolForm(), newOrder:()=>orderForm(),
     import:importFile, export:exportFile,
     syncNow:()=>syncNow(true), shareView:shareInviteForm, history:historyForm,
     useInvite:()=>useInvite($("#inv_text").value),
@@ -1607,6 +1698,9 @@ function bind(){
   M.querySelectorAll("[data-count]").forEach(i => i.onchange = () => setStock(i.dataset.count, i.value, "Count correction"));
   M.querySelectorAll("[data-adjp]").forEach(b => b.onclick = () => adjustStockForm(product(b.dataset.adjp)));
   M.querySelectorAll("[data-sell]").forEach(b => b.onclick = () => sellForm(product(b.dataset.sell)));
+  M.querySelectorAll("[data-ep]").forEach(b => b.onclick = () => { filter.ep = b.dataset.ep; render(); });
+  M.querySelectorAll("[data-edite]").forEach(b => b.onclick = () => expenseForm(S.expenses.find(x => x.id === b.dataset.edite)));
+  M.querySelectorAll("[data-estop]").forEach(b => b.onclick = () => { const e = S.expenses.find(x => x.id === b.dataset.estop); confirmBox(`Stop "${e.desc||e.category}" from this month on? Past months stay recorded.`, "Stop", () => { e.stopped = today(); persist("expenses"); render(); toast("Monthly cost stopped"); }); });
   M.querySelectorAll("[data-pc]").forEach(b => b.onclick = () => { filter.pc = b.dataset.pc; render(); });
   M.querySelectorAll("[data-rp]").forEach(b => b.onclick = () => { filter.rp = b.dataset.rp; render(); });
   M.querySelectorAll("[data-paid]").forEach(b => b.onclick = () => { const o = S.orders.find(x=>x.id===b.dataset.paid); o.paid = !o.paid; persist("orders"); render(); toast(o.paid?"Marked paid":"Marked unpaid"); });
@@ -1633,8 +1727,9 @@ $("#fab").onclick = () => modal("Quick add", `<div class="sheet">
   <button data-q="order">New order<small>for later delivery</small></button>
   <button data-q="product">New product<small>with cost recipe</small></button>
   <button data-q="spool">New spool<small>filament</small></button>
+  <button data-q="expense">New expense<small>purchase or running cost</small></button>
   <button data-q="idea">New idea<small>note it down</small></button></div>`, m => m.querySelectorAll("[data-q]").forEach(b => b.onclick = () => { close(); ({
-    print:()=>printForm(), order:()=>orderForm(), product:()=>productForm(), spool:()=>spoolForm(), idea:()=>noteForm("ideas"),
+    print:()=>printForm(), order:()=>orderForm(), product:()=>productForm(), spool:()=>spoolForm(), idea:()=>noteForm("ideas"), expense:()=>expenseForm(),
     sell:()=>{ const ps = S.products.filter(p=>n(p.stock)>0); if (!ps.length) return toast("Nothing in stock to sell"); modal("Sell which product?", `<div class="sheet">${ps.map(p=>`<button data-sp="${p.id}">${esc(p.name)}<small>${esc(p.type)} · ${n(p.stock)} in stock</small></button>`).join("")}</div>`, mm => mm.querySelectorAll("[data-sp]").forEach(x => x.onclick = () => { close(); sellForm(product(x.dataset.sp)); })); }
   })[b.dataset.q](); }));
 const h = (location.hash||"").slice(1); if (VIEWS.some(v=>v[0]===h)) view = h;
