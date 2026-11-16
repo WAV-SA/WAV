@@ -99,6 +99,7 @@ tbody tr:hover{background:var(--sunk)}
 .pill.good{background:var(--good-soft);color:var(--good)}
 .pill.warn{background:var(--warn-soft);color:var(--warn)}
 .pill.bad{background:var(--bad-soft);color:var(--bad)}
+.pill.accent{background:var(--accent-soft);color:var(--accent)}
 .pill.neutral{background:var(--sunk);color:var(--muted)}
 .sw{width:12px;height:12px;border-radius:50%;border:1px solid color-mix(in srgb,var(--ink) 25%,transparent);display:inline-block;flex:none}
 .swrow{display:flex;gap:3px;align-items:center}
@@ -182,6 +183,7 @@ textarea{min-height:80px;resize:vertical}
 .upd{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);z-index:60;background:var(--surface);border:1px solid var(--accent);border-radius:12px;padding:10px 12px 10px 16px;display:flex;gap:12px;align-items:center;box-shadow:0 8px 24px color-mix(in srgb,var(--ink) 18%,transparent);width:max-content;max-width:calc(100% - 32px);font-weight:500}
 .xbtn{all:unset;cursor:pointer;font-size:12px;font-weight:600;color:var(--accent);margin-top:6px}
 .name,.meta,.note p,textarea,input{unicode-bidi:plaintext}
+.head > .row{min-width:0;max-width:100%}
 .stepper{display:flex;align-items:center;gap:4px}
 .stepper input{width:64px;text-align:center;padding:5px 4px}
 .alert{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:8px;font-size:13px}
@@ -210,7 +212,7 @@ textarea{min-height:80px;resize:vertical}
   .kv{font-size:20px}
 }
 .mobile-only,.fab,.nav button.mobile-only{display:none}
-body.ro [data-edite],body.ro [data-estop],body.ro .fab,body.ro [data-act]:not([data-act="syncNow"]):not([data-act="syncOff"]):not([data-act="export"]),body.ro [data-step],body.ro [data-sell],body.ro [data-adjp],body.ro [data-editp],body.ro [data-print],body.ro [data-edits],body.ro [data-adj],body.ro [data-edito],body.ro [data-delpr],body.ro [data-note],body.ro [data-editn],body.ro [data-restore],body.ro .ro-hide{display:none!important}
+body.ro [data-mdone],body.ro [data-medit],body.ro [data-act="savePH"],body.ro #ph_start,body.ro [data-inv-hide],body.ro [data-edite],body.ro [data-estop],body.ro .fab,body.ro [data-act]:not([data-act="syncNow"]):not([data-act="syncOff"]):not([data-act="export"]),body.ro [data-step],body.ro [data-sell],body.ro [data-adjp],body.ro [data-editp],body.ro [data-print],body.ro [data-edits],body.ro [data-adj],body.ro [data-edito],body.ro [data-delpr],body.ro [data-note],body.ro [data-editn],body.ro [data-restore],body.ro .ro-hide{display:none!important}
 body.ro [data-res],body.ro [data-paid],body.ro [data-count],body.ro [data-ostatus],body.ro .ro-lock{pointer-events:none}
 body.ro [data-count]{border-color:transparent;background:transparent}
 .sheet{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
@@ -228,6 +230,9 @@ body.ro [data-count]{border-color:transparent;background:transparent}
   .fab{display:flex;position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(76px + env(safe-area-inset-bottom,0px));width:56px;height:56px;border-radius:50%;border:0;background:var(--accent);color:var(--accent-ink);font-size:30px;line-height:1;align-items:center;justify-content:center;box-shadow:0 6px 18px color-mix(in srgb,var(--ink) 25%,transparent);z-index:31;cursor:pointer}
   .head .row .btn.primary,.head .row [data-act="newPrint"],.head .row [data-act="newOrder"]{display:none}
   .head{margin-bottom:14px}
+  .head > div:first-child{min-width:0}
+  .head > .row{width:100%}
+  .head > .row .tabs{max-width:100%}
   .tablewrap{border:0;background:transparent;overflow:visible}
   .tablewrap table,.tablewrap tbody,.tablewrap tr,.tablewrap td{display:block;width:100%}
   .tablewrap thead{display:none}
@@ -271,9 +276,9 @@ body.ro [data-count]{border-color:transparent;background:transparent}
 
 <script>
 (() => {
-const KEYS = ["products","spools","prints","orders","moves","fil","edits","expenses","ideas","lessons","settings","trash"];
-const APP_VERSION = "2026.11.17";
-const blank = () => ({products:[],spools:[],prints:[],orders:[],moves:[],fil:[],edits:[],expenses:[],ideas:[],lessons:[],settings:{hour:2,energy:0.2,wear:0,failAllow:true,workspace:"WAV",currency:"SAR",feePct:0,packaging:0,targetMargin:50},trash:[]});
+const KEYS = ["products","spools","prints","orders","moves","fil","edits","expenses","maint","ideas","lessons","settings","trash"];
+const APP_VERSION = "2026.11.17c";
+const blank = () => ({products:[],spools:[],prints:[],orders:[],moves:[],fil:[],edits:[],expenses:[],maint:[],ideas:[],lessons:[],settings:{hour:2,energy:0.2,wear:0,failAllow:true,workspace:"WAV",currency:"SAR",feePct:0,packaging:0,targetMargin:50},trash:[]});
 let S = blank();
 let view = "home", db = null, mode = "local", loaded = false, filter = {};
 const LS = "wav-app-v1";
@@ -299,7 +304,7 @@ function recipePpg(p){ const ms = (p.materials||[]).filter(m=>n(m.grams)>0), tot
   if (tot) return ms.reduce((a,m)=>a+n(m.grams)*ppg(spool(m.spoolId)),0)/tot;
   const sp = S.spools.filter(x=>n(x.initial)); return sp.length ? sp.reduce((a,x)=>a+ppg(x),0)/sp.length : 0; }
 function failRate(){
-  let units = 0, good = 0; S.prints.forEach(pr => { units += n(pr.qty)||1; good += goodOf(pr); });
+  let units = 0, good = 0; S.prints.forEach(pr => { if (pr.dev || pr.order) return; const pd = product(pr.product); if (pd && !isSelling(pd) && stageOf(pd) !== "retired") return; units += n(pr.qty)||1; good += goodOf(pr); });
   return units >= 5 ? Math.max(0, Math.min(0.5, 1 - good/units)) : 0;
 }
 function costParts(p){
@@ -385,7 +390,7 @@ function mergeState(Lc, Rc){
   const tmap = new Map(); [...Rm.trash, ...L.trash].forEach(t => tmap.set(t.id, t));
   const deadAt = {}; tmap.forEach(t => { const id = t.record && t.record.id; if (id) deadAt[id] = Math.max(deadAt[id]||0, Date.parse(t.deletedAt)||0); });
   const alive = x => x && (!(x.id in deadAt) || (Date.parse(x._restoredAt)||0) > deadAt[x.id]);
-  ["products","spools","prints","orders","moves","fil","edits","expenses","ideas","lessons"].forEach(k => {
+  ["products","spools","prints","orders","moves","fil","edits","expenses","maint","ideas","lessons"].forEach(k => {
     const m = new Map(); Rm[k].forEach(x => m.set(x.id, x)); L[k].forEach(x => m.set(x.id, x));
     const seen = new Set(), list = [];
     L[k].forEach(x => { if (!seen.has(x.id)){ seen.add(x.id); list.push(m.get(x.id)); } });
@@ -490,7 +495,7 @@ function shareInviteForm(){
   });
 }
 async function connectSync(owner, repo, token, readonly){
-  SY = {owner:owner.trim(), repo:repo.trim(), token:token.trim(), readonly:!!readonly};
+  SY = {owner:owner.trim(), repo:repo.trim(), token:token.trim(), readonly:!!readonly, connectedAt:new Date().toISOString()};
   showSync();
   try{
     const rr = await ghFetch(""); if (!rr.ok) throw ghError(rr);
@@ -546,6 +551,7 @@ window.addEventListener("online", () => syncNow());
 setInterval(() => { if (document.visibilityState === "visible" && !SY.dirty) syncNow(); }, 60000);
 
 async function boot(){
+  if (SY.token && !SY.connectedAt){ SY.connectedAt = new Date().toISOString(); saveSY(); }
   loadLocal(); render();
   try{ if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){}
   if (!window.claude || !window.claude.use){ showSync(); if (syncOn()) syncNow(); return; }
@@ -577,7 +583,7 @@ function ensureLedger(){
   if (!S.settings.ledgerAt){ S.settings.ledgerAt = now; changed = true; }
   const mids = new Set(S.moves.map(m=>m.id)), fids = new Set(S.fil.map(f=>f.id));
   S.products.forEach(p => { if (mids.has("open-"+p.id)) return;
-    let c = 0; S.prints.forEach(pr => { if (pr.product===p.id) c += goodOf(pr); });
+    let c = 0; S.prints.forEach(pr => { if (pr.product===p.id && !pr.dev) c += goodOf(pr); });
     S.orders.forEach(o => { if (o.status==="delivered") (o.items||[]).forEach(i => { if (i.product===p.id) c -= n(i.qty); }); });
     S.moves.push({id:"open-"+p.id, product:p.id, delta:Math.round(n(p.stock)-c), opening:true, reason:"Starting balance", at:now, date:today()}); changed = true; });
   S.spools.forEach(sp => { if (fids.has("sopen-"+sp.id)) return;
@@ -588,7 +594,7 @@ function ensureLedger(){
 function recompute(){
   const st = {}, rem = {};
   S.moves.forEach(m => { if (m.opening || m.adj) st[m.product] = (st[m.product]||0) + n(m.delta); });
-  S.prints.forEach(pr => { st[pr.product] = (st[pr.product]||0) + goodOf(pr); (pr.usage||[]).forEach(u => { rem[u.id] = (rem[u.id]||0) - n(u.grams); }); });
+  S.prints.forEach(pr => { if (!pr.dev) st[pr.product] = (st[pr.product]||0) + goodOf(pr); (pr.usage||[]).forEach(u => { rem[u.id] = (rem[u.id]||0) - n(u.grams); }); });
   S.orders.forEach(o => { if (o.status==="delivered") (o.items||[]).forEach(i => { st[i.product] = (st[i.product]||0) - n(i.qty); }); });
   S.fil.forEach(f => { rem[f.spool] = (rem[f.spool]||0) + n(f.delta); });
   S.products.forEach(p => { p.stock = Math.round(st[p.id]||0); });
@@ -616,24 +622,30 @@ const OPEN = ["new","printing","ready"];
 function reserved(pid){ return S.orders.filter(o=>OPEN.includes(o.status)).reduce((a,o)=>a+(o.items||[]).filter(i=>i.product===pid).reduce((b,i)=>b+n(i.qty),0),0); }
 function available(p){ return n(p.stock) - reserved(p.id); }
 function suggestPrice(cost){ const m = n(S.settings.targetMargin)/100, f = n(S.settings.feePct)/100; const d = 1-m-f; return d>0.05 ? Math.ceil(cost/d) : 0; }
-const CATS = [["final","Final product"],["prototype","Prototype"]];
-const catOf = p => p && p.category === "prototype" ? "prototype" : "final";
-const catPill = p => catOf(p) === "prototype" ? ` <span class="pill warn" style="vertical-align:1px">Prototype</span>` : ` <span class="pill good" style="vertical-align:1px">Final</span>`;
+/* Product stage. Older records only have category final/prototype, which map to Producing/Developing. */
+const STAGES = [["idea","Idea","not started yet","neutral"],["dev","Developing","testing the design","warn"],["both","Producing & developing","selling, still improving","accent"],["prod","Producing","ready to sell","good"],["retired","Retired","no longer made","neutral"]];
+const stageOf = p => p && STAGES.some(x => x[0] === p.stage) ? p.stage : (p && p.category === "prototype" ? "dev" : "prod");
+const stageInfo = p => STAGES.find(x => x[0] === stageOf(p));
+const isSelling = p => ["both","prod"].includes(stageOf(p));
+const isDeveloping = p => ["idea","dev","both"].includes(stageOf(p));
+const catOf = p => ["idea","dev"].includes(stageOf(p)) ? "prototype" : "final";
+const catPill = p => { const st = stageInfo(p); return ` <span class="pill ${st[3]}" style="vertical-align:1px">${st[1]}</span>`; };
 function restockPlan(){
-  return S.products.filter(p => catOf(p) === "final").map(p => { const need = Math.max(0, n(p.min) - available(p)); return {p, need}; }).filter(x=>x.need>0)
+  return S.products.filter(p => isSelling(p)).map(p => { const need = Math.max(0, n(p.min) - available(p)); return {p, need}; }).filter(x=>x.need>0)
     .map(x => ({...x, minutes:n(x.p.minutes)*x.need, mats:unitGrams(x.p).map(m=>({spoolId:m.spoolId, grams:m.grams*x.need}))}));
 }
 function logPrint(rec){
   const ordId = String(rec.product||"").startsWith("order:") ? rec.product.slice(6) : null, ord = ordId ? S.orders.find(o => o.id === ordId) : null;
   if (ordId){ rec = {...rec, product:null, name:"Special · " + (ord?.customer || "order")}; }
   const p = ordId ? null : product(rec.product);
-  const usage = rec.usage.filter(u => n(u.grams) > 0).map(u => { const s = spool(u.id); return {id:u.id, grams:n(u.grams), name:s?.name||"", color:s?.color||"", pricePerGram:+ppg(s).toFixed(4)}; });
+  const usage = rec.usage.filter(u => n(u.grams) > 0).map(u => { const s = spool(u.id); return {id:u.id, grams:n(u.grams), color:s?.color||"", pricePerGram:+ppg(s).toFixed(4)}; });
   const grams = usage.reduce((a,u)=>a+u.grams,0);
   const cost = usage.reduce((a,u)=>a+u.grams*u.pricePerGram,0) + n(rec.minutes)/60*runRate() + (p ? n(p.extras)*n(rec.qty) : 0);
   const qty = n(rec.qty)||1, goodQty = Math.max(0, Math.min(qty, Math.round(n(rec.goodQty))));
   const pr = {id:uid(), at:new Date().toISOString(), name:p?.name||rec.name||"Print", product:rec.product, date:rec.date||today(), qty, goodQty, minutes:n(rec.minutes), grams:Math.round(grams*100)/100, usage, good:goodQty>0, failReason:goodQty<qty?(rec.failReason||""):"", progress:goodQty===0 && rec.progress<100 ? rec.progress : undefined, notes:rec.notes||"", cost};
   recompute();
-  if (p && goodQty > 0){
+  if (rec.dev) pr.dev = true;
+  if (p && goodQty > 0 && !rec.dev){
     const before = Math.max(0, n(p.stock)), unit = cost/goodQty;
     p.avgCost = before > 0 ? (n(p.avgCost)*before + unit*goodQty)/(before+goodQty) : unit;
   }
@@ -691,7 +703,7 @@ const spoolOptions = sel => S.spools.map(s => `<option value="${s.id}" ${s.id===
 
 /* ---------- nav ---------- */
 const VIEWS = [
-  ["home","Overview"],["stock","Inventory"],["orders","Orders"],["reports","Sales"],["expenses","Expenses"],["products","Products"],["prints","Print log"],["spools","Filament"],
+  ["home","Overview"],["stock","Inventory"],["orders","Orders"],["reports","Sales"],["expenses","Expenses"],["printer","Printer"],["products","Products"],["prints","Print log"],["spools","Filament"],
   ["notes","Ideas & lessons"],["settings","Settings"]
 ];
 function counts(k){
@@ -702,6 +714,7 @@ function counts(k){
   if (k==="orders") return S.orders.filter(o=>o.status!=="delivered" && o.status!=="cancelled").length || "";
   if (k==="notes") return S.ideas.length + S.lessons.length || "";
   if (k==="expenses") return "";
+  if (k==="printer") return S.maint.length ? (maintDue().filter(x=>x.left<=0).length || "") : "";
   return "";
 }
 const ICON = {
@@ -727,7 +740,7 @@ function go(v){ view = v; try{ history.replaceState(null,"","#"+v); }catch(e){} 
 function render(){
   recompute();
   renderNav();
-  const fn = {home:vHome, stock:vStock, reports:vReports, expenses:vExpenses, products:vProducts, prints:vPrints, spools:vSpools, orders:vOrders, notes:vNotes, settings:vSettings}[view] || vHome;
+  const fn = {printer:vPrinter, home:vHome, stock:vStock, reports:vReports, expenses:vExpenses, products:vProducts, prints:vPrints, spools:vSpools, orders:vOrders, notes:vNotes, settings:vSettings}[view] || vHome;
   $("#main").innerHTML = fn();
   $("#main").querySelectorAll(".tablewrap table").forEach(t => { const hs = [...t.querySelectorAll("thead th")].map(th => th.textContent.trim()); t.querySelectorAll("tbody tr").forEach(tr => [...tr.children].forEach((td,i) => td.setAttribute("data-label", hs[i]||""))); });
   $("#main").querySelectorAll("table[data-compact] tbody tr").forEach(tr => { tr.classList.add("cx"); const td = tr.firstElementChild; if (!td) return;
@@ -758,6 +771,9 @@ function vHome(){
   if (!syncOn() && S.products.length && (!lb || (Date.now()-new Date(lb))/864e5 > 7)) alerts.unshift(["warn", lb ? `Last backup was ${fmtDate(lb.slice(0,10))}. Your data lives on this phone only; export a backup to Files or iCloud.` : "Your data lives on this device only. Turn on cloud sync in Settings, or export a backup."]);
   const plan = restockPlan(); if (plan.length) alerts.push(["warn", `${plan.length} product${plan.length>1?"s":""} below minimum. Restock plan: ${plan.reduce((a,x)=>a+x.need,0)} units, about ${hrs(plan.reduce((a,x)=>a+x.minutes,0))} of printing.`]);
   S.orders.filter(o=>OPEN.includes(o.status) && o.due && o.due < today()).forEach(o => alerts.push(["bad", `Order for ${o.customer||"a customer"} was due ${fmtDate(o.due)}`]));
+  if (S.maint.length) maintDue().filter(x => x.left <= 0).forEach(x => alerts.push(["warn", `Printer: "${x.t.name}" is due (${Math.round(x.since)} h since last time)`]));
+  if (dataSizeKB() > 800) alerts.push(["warn", `Your data is ${dataSizeKB()} KB. Sync still works, but ask Claude to add yearly archiving soon.`]);
+  if (syncOn() && !SY.readonly && SY.connectedAt && (Date.now() - new Date(SY.connectedAt)) / 864e5 > 330) alerts.push(["warn", "Your GitHub token is almost a year old. Make a new one and use Settings → Cloud sync → Replace token."]);
   S.orders.filter(o=>o.status==="delivered" && !o.paid).forEach(o => alerts.push(["warn", `${o.customer||"A customer"} hasn't paid ${money(orderDue(o))} ${cur()} (delivered)`]));
   S.products.forEach(p => { const can = canMake(p); if (can !== Infinity && can < 1) alerts.push(["bad", `Not enough filament to print ${p.name}`]); });
 
@@ -793,9 +809,10 @@ function canMake(p){
 function vProducts(){
   const q = (filter.p||"").toLowerCase();
   const pc = filter.pc || "all";
-  const list = S.products.filter(p => (pc === "all" || catOf(p) === pc) && (!q || (p.name+" "+p.type).toLowerCase().includes(q)));
-  const cnt = k => S.products.filter(p => catOf(p) === k).length;
-  return head("Products", "Cost is filament + printer time + extras. Prototypes are left out of the restock plan.", `<div class="tabs">${[["all","All "+S.products.length],["final","Final "+cnt("final")],["prototype","Prototype "+cnt("prototype")]].map(([k,l])=>`<button data-pc="${k}" aria-pressed="${pc===k}">${l}</button>`).join("")}</div><input id="pq" placeholder="Search" value="${esc(filter.p||"")}" style="width:180px"><button class="btn primary" data-act="newProduct">Add product</button>`) +
+  const inTab = (p, k) => k === "all" || (k === "sell" ? isSelling(p) : k === "dev" ? isDeveloping(p) : stageOf(p) === "retired");
+  const list = S.products.filter(p => inTab(p, pc) && (!q || (p.name+" "+p.type).toLowerCase().includes(q)));
+  const cnt = k => S.products.filter(p => inTab(p, k)).length;
+  return head("Products", "Cost is filament + printer time + extras. Only products you're producing go in the restock plan.", `<div class="tabs">${[["all","All "+S.products.length],["sell","Producing "+cnt("sell")],["dev","Developing "+cnt("dev")],["retired","Retired "+cnt("retired")]].map(([k,l])=>`<button data-pc="${k}" aria-pressed="${pc===k}">${l}</button>`).join("")}</div><input id="pq" placeholder="Search" value="${esc(filter.p||"")}" style="width:180px"><button class="btn primary" data-act="newProduct">Add product</button>`) +
   (list.length ? `<div class="tablewrap"><table data-compact><thead><tr><th>Product</th><th>Filament</th><th class="r">Print</th><th class="r">Unit cost</th><th class="r">Price</th><th class="r">Margin</th><th class="r">Stock</th><th></th></tr></thead><tbody>${list.map(p=>{
     const c = unitCost(p), m = n(p.price)?(n(p.price)-c)/n(p.price)*100:0, st = stockState(p);
     return `<tr><td>${pname(p)}</td>
@@ -821,7 +838,7 @@ function vPrints(){
     const mismatch = p && pr.name && pr.name !== p.name;
     return `<tr><td class="num">${fmtDate(pr.date)}</td><td><div class="name">${pr.order ? `<span class="pill neutral">Special</span> ${esc(po?.customer||"order")}` : esc(p?.name||pr.name)}</div><div class="meta">${esc(pr.order ? (po?.custom?.desc||"Deleted order").slice(0,60) : (p?.type||"Deleted product"))}${mismatch?` · logged as “${esc(pr.name)}”`:""}</div></td><td class="r num">${n(pr.qty)}</td>
     <td><div class="swrow">${(pr.usage||[]).filter(u=>n(u.grams)>0).map(u=>{const s=spool(u.id);return `<span class="sw" title="${esc(s?.name||u.name||"")}" style="background:${hex(s?.color||u.color)}"></span>`}).join("")}<span class="num meta" style="margin-left:6px">${g(pr.grams)} g</span></div></td>
-    <td class="r num">${hrs(pr.minutes)}</td><td class="r num">${money(pr.cost)}</td><td class="k"><button class="btn ghost sm" data-res="${pr.id}" title="Change result" style="padding:0">${resultPill(pr)}</button>${pr.failReason?`<div class="meta">${esc(pr.failReason)}</div>`:""}</td><td class="meta" style="max-width:220px">${esc(pr.notes)}</td>
+    <td class="r num">${hrs(pr.minutes)}</td><td class="r num">${money(pr.cost)}</td><td class="k"><button class="btn ghost sm" data-res="${pr.id}" title="Change result" style="padding:0">${resultPill(pr)}</button>${pr.dev?` <span class="pill accent">Test</span>`:""}${pr.failReason?`<div class="meta">${esc(pr.failReason)}</div>`:""}</td><td class="meta" style="max-width:220px">${esc(pr.notes)}</td>
     <td class="r"><button class="btn sm ghost danger" data-delpr="${pr.id}">Delete</button></td></tr>`;}).join("")}</tbody></table></div>${all.length > lim ? `<div class="row" style="justify-content:center;margin-top:12px"><button class="btn" data-more="prn" data-n="${lim+100}">Show ${Math.min(100, all.length-lim)} more of ${all.length}</button></div>` : ""}`
   : `<div class="empty">${q ? "No prints match your search." : "No prints here yet."}</div>`);
 }
@@ -926,15 +943,15 @@ function vExpenses(){
   <div class="grid2">
     <section class="panel"><h2>Expenses</h2>${list.length ? Object.keys(months).sort().reverse().map(k => `<div class="eyebrow" style="margin:12px 0 4px">${mname(k)} · ${money(months[k].reduce((a,x)=>a+x.amount,0))}</div><div class="list" style="gap:0">${months[k].map(x => `<div class="item"><div class="pname" style="min-width:0">${x.e.receipt?`<img class="thumb" data-ephoto="${x.e.id}" alt="" width="44" height="44">`:""}<div style="min-width:0"><div class="name">${esc(x.e.desc||x.e.category)}${x.recurring?` <span class="pill neutral">Monthly</span>`:""}</div><div class="meta">${fmtDate(x.date)} · ${esc(x.e.category||"Other")}${x.e.paidBy?" · paid by "+esc(x.e.paidBy):""}</div></div></div><div class="row" style="flex-wrap:nowrap;gap:6px"><span class="num" style="font-weight:600">${money(x.amount)}</span><button class="btn sm ghost" data-edite="${x.e.id}">Edit</button></div></div>`).join("")}</div>`).join("") : `<div class="empty">No expenses in this period. Add purchases like filament, nozzles, packaging, ads or your store subscription.</div>`}</section>
     <div class="list" style="gap:20px">
-      ${(() => { const pp = S.prints.filter(pr => { const pd = product(pr.product); return pd && catOf(pd) === "prototype" && inPeriod(pr.date, per); });
+      ${(() => { const pp = S.prints.filter(pr => { const pd = product(pr.product); return inPeriod(pr.date, per) && (pr.dev || (pd && ["idea","dev"].includes(stageOf(pd)))); });
         const dev = list.filter(x => x.e.category === "Production & development").reduce((a,x)=>a+x.amount,0);
         if (!pp.length && !dev) return "";
         const cost = pp.reduce((a,x)=>a+n(x.cost),0), grams = pp.reduce((a,x)=>a+n(x.grams),0), mins = pp.reduce((a,x)=>a+n(x.minutes),0);
         return `<section class="panel"><h2>Production & development</h2>
           <div class="vrow"><span>Development expenses</span><span class="num">${money(dev)}</span></div>
-          <div class="vrow"><span>Prototype printing <span class="meta">(${pp.length} prints · ${g(grams)} g · ${hrs(mins)})</span></span><span class="num">${money(cost)}</span></div>
+          <div class="vrow"><span>Development printing <span class="meta">(${pp.length} prints · ${g(grams)} g · ${hrs(mins)})</span></span><span class="num">${money(cost)}</span></div>
           <div class="vrow"><b>Total spent developing</b><b class="num">${money(dev+cost)} ${cur()}</b></div>
-          <p class="meta" style="margin:6px 0 0">Prototype printing is worked out from your print log for products marked Prototype. It isn't added to "Spent" above, because that filament is already in your filament purchases.</p></section>`; })()}
+          <p class="meta" style="margin:6px 0 0">Development printing is worked out from your print log: test prints, and every print of products at the Idea or Developing stage. It isn't added to "Spent" above, because that filament is already in your filament purchases.</p></section>`; })()}
       <section class="panel"><h2>By category</h2>${Object.keys(byCat).length ? Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([k,v]) => `<div style="margin-bottom:10px"><div class="row" style="justify-content:space-between"><span>${esc(k)}${costedCats().includes(k)?` <span class="meta">· in unit cost</span>`:""}</span><span class="num">${money(v)}</span></div><div class="bar" style="margin-top:5px"><i style="width:${total?v/total*100:0}%;background:var(--accent)"></i></div></div>`).join("") : `<p class="meta">Nothing yet.</p>`}</section>
       <section class="panel"><h2>Monthly costs</h2>${monthly.length ? `<div class="list" style="gap:0">${monthly.map(e => `<div class="item"><div><div class="name">${esc(e.desc||e.category)}</div><div class="meta">${esc(e.category)} · since ${fmtDate(e.date)}</div></div><div class="row" style="flex-wrap:nowrap;gap:6px"><span class="num">${money(e.amount)}</span><button class="btn sm ghost" data-estop="${e.id}">Stop</button></div></div>`).join("")}</div>` : `<p class="meta">Tick "Repeats every month" on an expense, like your store plan or rent.</p>`}</section>
       ${Object.keys(byPayer).length > 1 || (Object.keys(byPayer)[0] && Object.keys(byPayer)[0] !== "Not set") ? `<section class="panel"><h2>Paid by</h2>${Object.entries(byPayer).sort((a,b)=>b[1]-a[1]).map(([k,v]) => `<div class="item"><span>${esc(k)}</span><span class="num">${money(v)}</span></div>`).join("")}</section>` : ""}
@@ -972,6 +989,198 @@ function expenseForm(e, preset){
   });
 }
 
+/* ---------- shared: order numbers, file hand-off ---------- */
+const orderNo = o => "WAV-" + String(o.created || today()).replace(/-/g,"").slice(2) + "-" + String(o.id).replace(/[^a-z0-9]/gi,"").slice(0,4).toUpperCase();
+async function handOver(blob, name, label){
+  try{ const file = new File([blob], name, {type:blob.type}); if (navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:name}); return true; } }
+  catch(e){ if (e && e.name === "AbortError") return false; }
+  try{ const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); toast((label||"File") + " saved"); return true; }
+  catch(e){ toast("Couldn't save the file on this device."); return false; }
+}
+/* Minimal .xlsx writer: a stored (uncompressed) zip of SpreadsheetML parts. Works offline, no library. */
+const CRC_T = (() => { const t = new Uint32Array(256); for (let i=0;i<256;i++){ let c = i; for (let k=0;k<8;k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[i] = c >>> 0; } return t; })();
+function crc32(u8){ let c = 0xFFFFFFFF; for (let i=0;i<u8.length;i++) c = CRC_T[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function zipStore(files){
+  const enc = new TextEncoder(), parts = [], central = []; let off = 0;
+  const d = new Date(), dt = ((d.getFullYear()-1980) << 9) | ((d.getMonth()+1) << 5) | d.getDate(), tm = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+  files.forEach(([name, text]) => {
+    const nm = enc.encode(name), data = enc.encode(text), crc = crc32(data), h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true); h.setUint16(10, tm, true); h.setUint16(12, dt, true);
+    h.setUint32(14, crc, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, nm.length, true); h.setUint16(28, 0, true);
+    parts.push(new Uint8Array(h.buffer), nm, data);
+    const cd = new DataView(new ArrayBuffer(46)); cd.setUint32(0, 0x02014b50, true); cd.setUint16(4, 20, true); cd.setUint16(6, 20, true); cd.setUint16(8, 0x0800, true); cd.setUint16(10, 0, true);
+    cd.setUint16(12, tm, true); cd.setUint16(14, dt, true); cd.setUint32(16, crc, true); cd.setUint32(20, data.length, true); cd.setUint32(24, data.length, true); cd.setUint16(28, nm.length, true); cd.setUint32(42, off, true);
+    central.push(new Uint8Array(cd.buffer), nm); off += 30 + nm.length + data.length;
+  });
+  const cdSize = central.reduce((a,x)=>a+x.length,0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, cdSize, true); e.setUint32(16, off, true);
+  return new Blob([...parts, ...central, new Uint8Array(e.buffer)], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+}
+function makeXlsx(sheets){
+  const X = v => String(v).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  const col = i => { let s = ""; i++; while (i){ const m = (i-1) % 26; s = String.fromCharCode(65+m) + s; i = Math.floor((i-1)/26); } return s; };
+  const NS = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+  const files = [];
+  sheets.forEach((sh, si) => {
+    const cols = sh.widths ? `<cols>${sh.widths.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join("")}</cols>` : "";
+    const rows = sh.rows.map((r, ri) => `<row r="${ri+1}">${r.map((v, ci) => { if (v === "" || v == null) return ""; const ref = col(ci) + (ri+1), st = sh.boldRows && sh.boldRows.includes(ri) ? ' s="1"' : "";
+      return typeof v === "number" && isFinite(v) ? `<c r="${ref}"${st}><v>${v}</v></c>` : `<c r="${ref}" t="inlineStr"${st}><is><t xml:space="preserve">${X(v)}</t></is></c>`; }).join("")}</row>`).join("");
+    files.push([`xl/worksheets/sheet${si+1}.xml`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet ${NS}>${cols}<sheetData>${rows}</sheetData></worksheet>`]);
+  });
+  files.unshift(
+    ["[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((_,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")}</Types>`],
+    ["_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+    ["xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook ${NS}><sheets>${sheets.map((sh,i)=>`<sheet name="${X(sh.name.slice(0,31))}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join("")}</sheets></workbook>`],
+    ["xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join("")}<Relationship Id="rId${sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+    ["xl/styles.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`]
+  );
+  return zipStore(files);
+}
+function loadScript(src){ return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("Couldn't load the Excel tool. Connect to the internet once and try again.")); document.head.appendChild(s); }); }
+
+/* ---------- money for a period (shared by Sales and the Excel export) ---------- */
+function periodNumbers(per){
+  const sold = S.orders.filter(o => o.status === "delivered" && inPeriod(orderDate(o), per));
+  const rev = sold.reduce((a,o)=>a+orderTotal(o),0), net = sold.reduce((a,o)=>a+orderNet(o),0);
+  const ex = expenseItems().filter(x => inPeriod(x.date, per)), cc = costedCats();
+  const over = ex.filter(x => !cc.includes(x.e.category)).reduce((a,x)=>a+x.amount,0), spent = ex.reduce((a,x)=>a+x.amount,0);
+  const received = S.orders.filter(o => o.status !== "cancelled").reduce((a,o) => { const d = o.paid ? (o.deliveredAt || o.created) : o.created; const amt = o.paid ? orderTotal(o) : n(o.custom?.deposit); return a + (inPeriod(d, per) ? amt : 0); }, 0);
+  return {sold, rev, net, over, spent, received, ex, after: net - over};
+}
+
+/* ---------- Excel export ---------- */
+async function exportExcel(per){
+  per = per || "all";
+  try{
+    toast("Preparing Excel…");
+    recompute(); const P = periodNumbers(per), label = {month:"This month", q:"Last 3 months", all:"All time"}[per];
+    const r2 = v => Math.round(n(v)*100)/100, book = [];
+    const sheet = (name, rows, widths) => book.push({name, rows, widths, boldRows: name === "Summary" ? [0,6,8] : [0]});
+    sheet("Summary", [["WAV Print Studio — " + label], ["Exported", new Date().toLocaleString("en-GB")], ["Currency", cur()], [],
+      ["Revenue (delivered orders)", r2(P.rev)], ["Product costs, fees, shipping", r2(P.rev - P.net)], ["Profit from sales", r2(P.net)],
+      ["Running expenses (not in unit cost)", r2(P.over)], ["Profit after expenses", r2(P.after)], [],
+      ["Cash in (payments and deposits)", r2(P.received)], ["Cash out (all expenses)", r2(P.spent)], ["Orders delivered", P.sold.length]], [38, 18]);
+    const ords = S.orders.filter(o => inPeriod(orderDate(o), per)).sort((a,b) => String(orderDate(a)).localeCompare(String(orderDate(b))));
+    sheet("Orders", [["Order no","Date","Customer","Contact","Channel","Type","Items","Subtotal","Discount","Shipping charged","Total","Fees","Shipping paid","Packaging","Cost","Net profit","Status","Paid","Deposit"],
+      ...ords.map(o => [orderNo(o), orderDate(o), o.customer||"", o.contact||"", o.channel||"", isSpecial(o)?"Special":"Products",
+        isSpecial(o) ? (o.custom?.desc||"") : (o.items||[]).map(i => `${n(i.qty)}× ${product(i.product)?.name||"?"} ${product(i.product)?.type||""}`.trim()).join("; "),
+        r2(orderSub(o)), r2(o.discount), r2(o.shipCharge), r2(orderTotal(o)), r2(orderFees(o)), r2(o.shipCost), r2(o.packaging ?? S.settings.packaging), r2(orderCost(o)), r2(orderNet(o)),
+        (STATUSES.find(s => s[0] === o.status)||[])[1]||o.status, o.paid?"Yes":"No", r2(o.custom?.deposit)])], [16,11,16,14,14,10,40,10,9,10,10,8,10,10,9,10,11,6,9]);
+    sheet("Expenses", [["Date","Description","Category","Paid by","Amount","Monthly"], ...P.ex.slice().reverse().map(x => [x.date, x.e.desc||"", x.e.category||"", x.e.paidBy||"", r2(x.amount), x.recurring?"Yes":""])], [11,30,22,14,10,8]);
+    const prs = S.prints.filter(pr => inPeriod(pr.date, per)).sort((a,b) => String(a.date).localeCompare(String(b.date)));
+    sheet("Prints", [["Date","Product","Qty","Good","Purpose","Grams","Minutes","Cost","Notes"], ...prs.map(pr => { const pd = product(pr.product), po = pr.order ? S.orders.find(o => o.id === pr.order) : null;
+      return [pr.date, pr.order ? "Special: " + (po?.customer||"") : `${pd?.name||pr.name||""} ${pd?.type||""}`.trim(), n(pr.qty), goodOf(pr), pr.dev ? "Development test" : pr.order ? "Special order" : "Production", r2(pr.grams), Math.round(n(pr.minutes)), r2(pr.cost), [pr.failReason, pr.notes].filter(Boolean).join(" · ")]; })], [11,30,5,5,16,8,8,8,30]);
+    sheet("Stock", [["Product","Name","Stage","On hand","Reserved","Available","Unit cost","Price","Value at price"], ...S.products.map(p => [p.name, p.type||"", stageInfo(p)[1], n(p.stock), reserved(p.id), available(p), r2(unitCost(p)), r2(p.price), r2(n(p.stock)*n(p.price))])], [10,28,22,8,8,9,9,8,12]);
+    sheet("Filament", [["Spool","Remaining g","Net weight g","Price","Price per g","Value"], ...S.spools.map(sp => [sp.name.trim(), r2(sp.remaining), n(sp.initial), r2(sp.price), Math.round(ppg(sp)*10000)/10000, r2(n(sp.remaining)*ppg(sp))])], [26,12,12,8,10,9]);
+    await handOver(makeXlsx(book), `WAV-${per}-${today()}.xlsx`, "Excel file");
+  }catch(e){ toast(e.message || "Couldn't make the Excel file."); }
+}
+
+/* ---------- customer invoice (drawn on a canvas so it can be shared as an image) ---------- */
+async function invoiceForm(o){
+  recompute();
+  const st = S.settings, rows = isSpecial(o) ? [{d:o.custom?.desc||"Special order", q:1, u:n(o.custom?.price)}] : (o.items||[]).map(i => ({d:`${product(i.product)?.name||""} ${product(i.product)?.type||""}`.trim(), q:n(i.qty), u:n(i.price)}));
+  const dep = n(o.custom?.deposit), total = orderTotal(o), due = o.paid ? 0 : Math.max(0, total - dep);
+  const W = 1080, pad = 70, c = document.createElement("canvas"), x = c.getContext("2d");
+  try{ await document.fonts.ready; }catch(e){}
+  const F = (w, sz, fam) => `${w} ${sz}px ${fam || '"Instrument Sans", system-ui, sans-serif'}`;
+  const wrap = (txt, maxW, font) => { x.font = font; const words = String(txt).split(/\s+/), lines = []; let line = "";
+    words.forEach(w => { const t = line ? line + " " + w : w; if (x.measureText(t).width > maxW && line){ lines.push(line); line = w; } else line = t; }); if (line) lines.push(line); return lines.length ? lines : [""]; };
+  const descW = W - pad*2 - 360, lineH = 40;
+  const rowLines = rows.map(r => wrap(r.d, descW, F(500, 30)));
+  const H = 520 + rowLines.reduce((a,l) => a + l.length*lineH + 26, 0) + 360 + (o.notes ? 70 : 0);
+  c.width = W; c.height = H;
+  const css = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+  const ink = "#10292c", muted = "#5f6c6d", teal = "#12535b", line = "#e2ddd7";
+  x.fillStyle = "#ffffff"; x.fillRect(0, 0, W, H); x.fillStyle = teal; x.fillRect(0, 0, W, 14);
+  // logo
+  x.save(); x.translate(pad, 70); const k = 230/960; x.scale(k, k); x.translate(-150, -540); x.strokeStyle = teal; x.lineWidth = 38; x.lineCap = "round"; x.lineJoin = "round";
+  [[[190,578],[285,745],[375,588],[465,745],[560,578]],[[600,745],[712,586],[822,745]],[[852,578],[963,745],[1074,578]]].forEach(pts => { x.beginPath(); pts.forEach(([a,b],i) => i ? x.lineTo(a,b) : x.moveTo(a,b)); x.stroke(); }); x.restore();
+  x.fillStyle = muted; x.font = F(500, 18); x.textAlign = "left"; x.fillText("P R I N T   S T U D I O", pad, 152);
+  x.textAlign = "right"; x.fillStyle = ink; x.font = F(600, 44, '"Outfit", system-ui, sans-serif'); x.fillText("Invoice · فاتورة", W - pad, 100);
+  x.font = F(500, 26); x.fillStyle = muted; x.fillText(orderNo(o), W - pad, 140); x.fillText(new Date((o.deliveredAt || o.created || today()) + "T12:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"}), W - pad, 176);
+  let y = 250; x.textAlign = "left"; x.fillStyle = muted; x.font = F(600, 20); x.fillText("BILLED TO · العميل", pad, y);
+  x.fillStyle = ink; x.font = F(600, 34); x.fillText(o.customer || "Customer", pad, y + 46); if (o.contact){ x.font = F(400, 26); x.fillStyle = muted; x.fillText(o.contact, pad, y + 84); }
+  y = 400; x.fillStyle = "#f4f1ee"; x.fillRect(pad - 16, y - 34, W - pad*2 + 32, 52);
+  x.fillStyle = muted; x.font = F(600, 20); x.textAlign = "left"; x.fillText("ITEM · المنتج", pad, y);
+  x.textAlign = "right"; x.fillText("QTY", W - pad - 260, y); x.fillText("PRICE", W - pad - 140, y); x.fillText("TOTAL", W - pad, y);
+  y += 56;
+  rows.forEach((r, i) => { x.fillStyle = ink; x.textAlign = "left"; x.font = F(500, 30); rowLines[i].forEach((t, j) => x.fillText(t, pad, y + j*lineH));
+    x.textAlign = "right"; x.font = F(500, 28, '"JetBrains Mono", ui-monospace, monospace'); x.fillText(String(r.q), W - pad - 260, y); x.fillText(money(r.u), W - pad - 140, y); x.fillText(money(r.q*r.u), W - pad, y);
+    y += rowLines[i].length*lineH; x.strokeStyle = line; x.lineWidth = 2; x.beginPath(); x.moveTo(pad, y - 14); x.lineTo(W - pad, y - 14); x.stroke(); y += 26; });
+  const sumRow = (label, val, strong, color) => { x.textAlign = "left"; x.fillStyle = strong ? ink : muted; x.font = F(strong ? 700 : 500, strong ? 32 : 26); x.fillText(label, W - pad - 470, y);
+    x.textAlign = "right"; x.fillStyle = color || ink; x.font = F(strong ? 700 : 500, strong ? 34 : 26, '"JetBrains Mono", ui-monospace, monospace'); x.fillText(val, W - pad, y); y += strong ? 54 : 42; };
+  y += 10; sumRow("Subtotal · المجموع", money(orderSub(o)));
+  if (n(o.discount)) sumRow("Discount · خصم", "−" + money(o.discount));
+  if (n(o.shipCharge)) sumRow("Shipping · الشحن", money(o.shipCharge));
+  sumRow(`Total · الإجمالي (${cur()})`, money(total), true);
+  if (dep && !o.paid) sumRow("Deposit paid · العربون", "−" + money(dep));
+  sumRow(o.paid ? "PAID · مدفوع" : "Amount due · المتبقي", o.paid ? "✓" : money(due), true, o.paid ? "#2f7a4b" : teal);
+  if (o.notes){ x.textAlign = "left"; x.fillStyle = muted; x.font = F(400, 24); wrap(o.notes, W - pad*2, F(400, 24)).slice(0,2).forEach((t, j) => x.fillText(t, pad, y + 10 + j*32)); y += 70; }
+  x.fillStyle = teal; x.fillRect(0, H - 120, W, 120); x.fillStyle = "#ffffff"; x.textAlign = "center"; x.font = F(600, 28);
+  x.fillText(st.invoiceThanks || "Thank you for choosing WAV · شكراً لاختيارك WAV", W/2, H - 70);
+  if (st.invoiceContact){ x.font = F(400, 22); x.fillText(st.invoiceContact, W/2, H - 34); }
+  const blob = await new Promise(r => c.toBlob(r, "image/png"));
+  const url = URL.createObjectURL(blob), name = orderNo(o) + ".png";
+  const text = [`WAV · ${orderNo(o)}`, o.customer ? `العميل: ${o.customer}` : "", ...rows.map(r => `• ${r.d} × ${r.q} = ${money(r.q*r.u)}`), n(o.discount) ? `خصم: −${money(o.discount)}` : "", n(o.shipCharge) ? `الشحن: ${money(o.shipCharge)}` : "", `الإجمالي: ${money(total)} ${cur()}`, dep && !o.paid ? `العربون: ${money(dep)}` : "", o.paid ? "مدفوع ✓" : `المتبقي: ${money(due)} ${cur()}`, st.invoiceThanks || "شكراً لاختيارك WAV"].filter(Boolean).join("\n");
+  modal("Invoice " + orderNo(o), `<img src="${url}" alt="Invoice" style="width:100%;border-radius:10px;border:1px solid var(--line)">
+    <p class="meta">Send it on WhatsApp as an image, or copy it as a text message.</p>
+    <div class="foot" style="flex-wrap:wrap"><button class="btn" data-x>Close</button><button class="btn" id="inv_txt">Copy as text</button><button class="btn primary" id="inv_send">Send image…</button></div>`, m => {
+    m.querySelector("[data-x]").onclick = close;
+    $("#inv_send").onclick = () => handOver(blob, name, "Invoice");
+    $("#inv_txt").onclick = () => copyText(text, "Invoice text copied. Paste it in WhatsApp.");
+  });
+}
+
+/* ---------- printer maintenance ---------- */
+const MAINT_DEFAULTS = [["Clean the build plate",15],["Clean the nozzle and check for clogs",100],["Clean and lubricate rails and lead screw",200],["Check belt tension",300],["Replace the nozzle",800]];
+function printerHours(){ return n(S.settings.printerStartHours) + S.prints.reduce((a,pr)=>a+n(pr.minutes),0)/60; }
+function ensureMaint(){ if (S.maint.length || S.settings.maintSeeded) return false; const h = printerHours(), at = new Date().toISOString();
+  S.maint = MAINT_DEFAULTS.map(([name, every]) => ({id:uid(), name, every, doneHours:h, doneAt:at, history:[]})); S.settings.maintSeeded = true; persist("maint","settings"); return true; }
+function maintDue(){ const h = printerHours(); return S.maint.map(t => ({t, since:h - n(t.doneHours), left:n(t.every) - (h - n(t.doneHours))})).sort((a,b) => a.left - b.left); }
+function vPrinter(){
+  ensureMaint(); const h = printerHours(), month = S.prints.filter(pr => ym(pr.date) === ym(today())).reduce((a,pr)=>a+n(pr.minutes),0)/60, list = maintDue();
+  return head("Printer", "Printing hours come from your print log. Intervals are suggestions; set them from your printer's manual.", `<button class="btn primary" data-act="newMaint">Add task</button>`) + `
+  <div class="strip">
+    <div><div class="eyebrow">Printer hours</div><div class="kv">${Math.round(h)}<small>h</small></div><div class="kd">${n(S.settings.printerStartHours)?`incl. ${Math.round(n(S.settings.printerStartHours))} h before the app`:"from your print log"}</div></div>
+    <div><div class="eyebrow">This month</div><div class="kv">${Math.round(month*10)/10}<small>h</small></div><div class="kd">printing time</div></div>
+    <div><div class="eyebrow">Due now</div><div class="kv">${list.filter(x=>x.left<=0).length}</div><div class="kd">maintenance tasks</div></div>
+    <div><div class="eyebrow">Next</div><div class="kv" style="font-size:16px;white-space:normal">${list[0]?esc(list[0].t.name):"—"}</div><div class="kd">${list[0]?(list[0].left<=0?"due now":"in "+Math.round(list[0].left)+" h"):"&nbsp;"}</div></div>
+  </div>
+  <section class="panel"><h2>Maintenance</h2>${list.length ? `<div class="list" style="gap:0">${list.map(({t, since, left}) => { const pct = Math.min(100, since/Math.max(1,n(t.every))*100), stt = left <= 0 ? "bad" : left < n(t.every)*0.15 ? "warn" : "good";
+    return `<div class="item" style="align-items:flex-start"><div style="min-width:0;flex:1"><div class="name">${esc(t.name)} <span class="pill ${stt}">${left<=0?"Due":stt==="warn"?"Soon":"OK"}</span></div><div class="meta">Every ${n(t.every)} h · ${Math.round(since)} h since last time${t.doneAt?" ("+fmtDate(String(t.doneAt).slice(0,10))+")":""}</div><div class="bar" style="margin-top:6px"><i style="width:${pct}%;background:var(--${stt==="good"?"accent":stt})"></i></div></div>
+      <div class="row" style="flex-wrap:nowrap;gap:6px;margin-left:12px"><button class="btn sm${left<=0?" primary":""}" data-mdone="${t.id}">Done</button><button class="btn sm ghost" data-medit="${t.id}">Edit</button></div></div>`; }).join("")}</div>` : `<p class="meta">No tasks.</p>`}</section>
+  <section class="panel" style="margin-top:20px"><h2>Hours before using the app</h2><p class="meta">If your printer had printing hours before you started logging here, add them so maintenance lines up. Bambu Handy shows the total under the printer's information.</p>
+    <div class="row"><input id="ph_start" type="number" min="0" step="1" value="${n(S.settings.printerStartHours)||""}" placeholder="0" style="width:140px"><button class="btn" data-act="savePH">Save</button></div></section>`;
+}
+function maintForm(t){
+  const isNew = !t; t = t ? {...t} : {id:uid(), name:"", every:100, doneHours:printerHours(), doneAt:new Date().toISOString(), history:[]};
+  modal(isNew ? "Add maintenance task" : "Edit task", `<div class="form">
+    <label class="f full">Task<input id="mt_name" value="${esc(t.name)}" placeholder="e.g. Replace PTFE tube"></label>
+    <label class="f">Every (printing hours)<input id="mt_every" type="number" min="1" value="${n(t.every)}"></label>
+    ${(t.history||[]).length ? `<p class="meta full">Done on ${t.history.slice(0,5).map(d => fmtDate(String(d).slice(0,10))).join(", ")}</p>` : ""}
+  </div><div class="foot">${isNew?"":`<button class="btn danger" id="mt_del" style="margin-right:auto">Delete</button>`}<button class="btn" data-x>Cancel</button><button class="btn primary" id="mt_save">Save</button></div>`, m => {
+    m.querySelector("[data-x]").onclick = close;
+    $("#mt_save").onclick = () => { t.name = $("#mt_name").value.trim(); t.every = Math.max(1, n($("#mt_every").value)); if (!t.name) return toast("Name the task");
+      if (isNew) S.maint.push(t); else S.maint[S.maint.findIndex(x => x.id === t.id)] = t; persist("maint"); close(); render(); toast("Task saved"); };
+    if (!isNew) $("#mt_del").onclick = () => { close(); trash("maint", S.maint.find(x => x.id === t.id)); render(); };
+  });
+}
+
+/* ---------- data size and token care ---------- */
+function dataSizeKB(){ try{ return Math.round(new Blob([JSON.stringify(S)]).size/1024); }catch(e){ return 0; } }
+function replaceTokenForm(){
+  modal("Replace token", `<p class="meta">Paste a new token for ${esc(SY.owner)}/${esc(SY.repo)} (Contents: Read and write). Your data stays as it is.</p>
+    <label class="f">New token<input id="rt_tok" type="password" autocomplete="off" autocapitalize="off" placeholder="github_pat_…"></label>
+    <div class="foot"><button class="btn" data-x>Cancel</button><button class="btn primary" id="rt_ok">Replace</button></div>`, m => {
+    m.querySelector("[data-x]").onclick = close;
+    $("#rt_ok").onclick = async () => { const t = $("#rt_tok").value.trim(); if (!t) return toast("Paste the new token");
+      const old = SY.token; SY.token = t; let ok = false; try{ const r = await ghFetch(""); ok = r.ok; }catch(e){}
+      if (!ok){ SY.token = old; return toast("That token can't open " + SY.repo + ". Check it has access to that repository."); }
+      SY.connectedAt = new Date().toISOString(); SY.error = ""; saveSY(); close(); showSync(); syncNow(true); render(); toast("Token replaced"); };
+  });
+}
+
 function vReports(){
   const per = filter.rp || "all";
   const now = today().slice(0,7);
@@ -984,7 +1193,7 @@ function vReports(){
   const cu = {}; S.orders.filter(o=>o.status==="delivered" && o.customer).forEach(o => { const k=o.customer.trim().toLowerCase(); cu[k] = cu[k]||{name:o.customer,n:0,r:0}; cu[k].n++; cu[k].r += orderTotal(o); });
   const repeat = Object.values(cu).filter(c=>c.n>1).length;
   const mdata = months.map(m => { const os = S.orders.filter(o=>o.status==="delivered" && orderDate(o).slice(0,7)===m); return {m, r:os.reduce((a,o)=>a+orderTotal(o),0), p:os.reduce((a,o)=>a+orderNet(o),0)}; });
-  return head("Sales", "Delivered orders only.", `<div class="tabs">${[["month","This month"],["q","Last 3 months"],["all","All time"]].map(([k,l])=>`<button data-rp="${k}" aria-pressed="${per===k}">${l}</button>`).join("")}</div>`) + `
+  return head("Sales", "Delivered orders only.", `<div class="tabs">${[["month","This month"],["q","Last 3 months"],["all","All time"]].map(([k,l])=>`<button data-rp="${k}" aria-pressed="${per===k}">${l}</button>`).join("")}</div><button class="btn" data-act="excel">Export Excel</button>`) + `
   <div class="strip">
     <div><div class="eyebrow">Revenue</div><div class="kv">${money(rev)}<small>${cur()}</small></div><div class="kd">${sold.length} orders</div></div>
     <div><div class="eyebrow">Net profit</div><div class="kv">${money(net)}<small>${cur()}</small></div><div class="kd">${rev?Math.round(net/rev*100):0}% of revenue</div></div>
@@ -1048,7 +1257,7 @@ function vOrders(){
     <td>${isSpecial(o) ? `<div class="pname">${o.custom?.photo?`<img class="thumb" data-ophoto="${o.id}" alt="" width="44" height="44">`:""}<div style="min-width:0"><div><span class="pill neutral">Special</span> ${esc((o.custom?.desc||"").slice(0,70))}${(o.custom?.desc||"").length>70?"…":""}</div><div class="meta">${specialPrints(o).length ? `${specialPrints(o).length} print${specialPrints(o).length>1?"s":""} · cost ${money(orderCost(o))}` : `estimated cost ${money(orderCost(o))}`}</div></div></div>` : (o.items||[]).map(i=>`<div>${n(i.qty)}× ${esc(product(i.product)?.name||"?")} <span class="meta">${esc(product(i.product)?.type||"")}</span></div>`).join("")}${short?`<span class="pill warn">Not enough stock</span>`:""}</td>
     <td class="num">${fmtDate(o.due)}</td><td class="r num k">${money(t)}</td><td class="r num" style="color:var(--${orderNet(o)>=0?"ink":"bad"})">${money(orderNet(o))}</td><td><button class="btn ghost sm" style="padding:0" data-paid="${o.id}" title="Toggle payment">${o.paid?`<span class="pill good">Paid</span>`:n(o.custom?.deposit)?`<span class="pill warn">Deposit ${money(o.custom.deposit)}</span>`:`<span class="pill warn">Unpaid</span>`}</button></td>
     <td class="k"><select data-ostatus="${o.id}" aria-label="Status" style="width:auto">${STATUSES.map(s=>`<option value="${s[0]}" ${s[0]===o.status?"selected":""}>${s[1]}</option>`).join("")}</select></td>
-    <td class="r"><div class="row" style="justify-content:flex-end;flex-wrap:nowrap">${isSpecial(o) && !["delivered","cancelled"].includes(o.status)?`<button class="btn sm" data-print="order:${o.id}">Print</button>`:""}<button class="btn sm ghost" data-edito="${o.id}">Edit</button></div></td></tr>`;}).join("")}</tbody></table></div>${allO.length > olim ? `<div class="row" style="justify-content:center;margin-top:12px"><button class="btn" data-more="on" data-n="${olim+100}">Show ${Math.min(100, allO.length-olim)} more of ${allO.length}</button></div>` : ""}`
+    <td class="r"><div class="row" style="justify-content:flex-end;flex-wrap:nowrap">${isSpecial(o) && !["delivered","cancelled"].includes(o.status)?`<button class="btn sm" data-print="order:${o.id}">Print</button>`:""}<button class="btn sm ghost" data-inv="${o.id}">Invoice</button><button class="btn sm ghost" data-edito="${o.id}">Edit</button></div></td></tr>`;}).join("")}</tbody></table></div>${allO.length > olim ? `<div class="row" style="justify-content:center;margin-top:12px"><button class="btn" data-more="on" data-n="${olim+100}">Show ${Math.min(100, allO.length-olim)} more of ${allO.length}</button></div>` : ""}`
   : `<div class="empty">No orders here.</div>`);
 }
 
@@ -1064,7 +1273,7 @@ function syncPanel(){
     <div class="row" style="justify-content:space-between"><span><span class="pill ${SY.error?(SY.offline?"warn":"bad"):"good"}">${esc(syncLabel())}</span></span><span class="meta">last sync ${ago(SY.lastSync)}</span></div>
     <p class="meta" style="margin:0">Connected to <b>${esc(SY.owner)}/${esc(SY.repo)}</b>${SY.readonly?" in <b>view-only</b> mode. This device shows the latest data and can't change anything.":". Changes upload a moment after you make them, and the latest data loads whenever you open the app."}</p>
     ${SY.error?`<div class="alert ${SY.offline?"warn":"bad"}">${esc(SY.error)}</div>`:""}
-    <div class="row"><button class="btn primary" data-act="syncNow">Sync now</button>${SY.readonly?"":`<button class="btn" data-act="shareView">Share view-only link</button><button class="btn" data-act="history">Version history</button>`}<button class="btn ghost danger" data-act="syncOff">Turn off on this device</button></div>
+    <div class="row"><button class="btn primary" data-act="syncNow">Sync now</button>${SY.readonly?"":`<button class="btn" data-act="shareView">Share view-only link</button><button class="btn" data-act="history">Version history</button><button class="btn" data-act="replaceToken">Replace token</button>`}<button class="btn ghost danger" data-act="syncOff">Turn off on this device</button></div>
     ${SY.readonly?installTip():""}</div>`;
   return `${inviteBox()}<hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
   <p class="meta">Keep your phone, computer and any other device in step. Your data is saved to a private repository in your GitHub account. Set it up once, then connect each device with the same token.</p>
@@ -1099,8 +1308,12 @@ function vSettings(){
   </div><div class="foot"><button class="btn primary" data-act="saveSettings">Save settings</button></div></section>
   <section class="panel"><h2>Cloud sync</h2>${syncPanel()}
   <h2 style="margin-top:24px">Backup</h2><p class="meta">${syncOn()?"Your data syncs to GitHub. A backup file is still a good extra copy.":"Your data is stored on this device. Export a backup regularly and save it to Files or iCloud Drive."} ${S.settings.lastBackup?`Last backup: ${fmtDate(S.settings.lastBackup.slice(0,10))}.`:"No backup yet."}</p>
-  <div class="row"><button class="btn primary" data-act="export">Export backup</button><button class="btn" data-act="import">Import backup</button></div>
-  <p class="meta" style="margin-top:16px">WAV version ${APP_VERSION}</p>
+  <div class="row"><button class="btn primary" data-act="export">Export backup</button><button class="btn" data-act="import">Import backup</button><button class="btn" data-act="excelAll">Export Excel</button></div>
+  <h2 style="margin-top:24px">Invoices</h2>
+  <div class="form ro-lock"><label class="f full">Contact line at the bottom<input id="s_ic" value="${esc(S.settings.invoiceContact||"")}" placeholder="e.g. @wav.sa · 05X XXX XXXX"></label>
+    <label class="f full">Thank-you line<input id="s_it" value="${esc(S.settings.invoiceThanks||"")}" placeholder="Thank you for choosing WAV · شكراً لاختيارك WAV"></label></div>
+  <div class="row" style="margin-top:8px"><button class="btn" data-act="saveInv">Save invoice details</button></div>
+  <p class="meta" style="margin-top:16px">Data size ${dataSizeKB()} KB${dataSizeKB() > 800 ? " · large: ask Claude to add yearly archiving" : " · comfortable (up to about 900 KB)"} · WAV version ${APP_VERSION}</p>
   <h2 style="margin-top:24px">Trash</h2>${S.trash.some(t=>!t.gone)?`<div class="list" style="gap:0">${S.trash.filter(t=>!t.gone).map(t=>`<div class="item"><div><div class="name">${esc(t.record.name||t.record.title||t.record.customer||"Item")}</div><div class="meta">${esc(t.kind)} · ${t.deletedAt?new Date(t.deletedAt).toLocaleDateString("en-GB"):""}</div></div><button class="btn sm" data-restore="${t.id}">Restore</button></div>`).join("")}</div><button class="btn sm ghost danger" data-act="emptyTrash" style="margin-top:8px">Empty trash</button>`:`<p class="meta">Trash is empty.</p>`}
   </section></div>`;
 }
@@ -1114,7 +1327,7 @@ function productForm(p){
     <div class="f full"><span>Photo</span><div class="photo-pick"><img id="p_photo_img" ${p.photo?`data-photo="${p.id}"`:""} alt="" ${p.photo?"":'style="visibility:hidden"'}><div class="row"><button class="btn sm" type="button" id="p_photo_pick">${p.photo?"Change photo":"Add photo"}</button><button class="btn sm ghost danger" type="button" id="p_photo_del" ${p.photo?"":"hidden"}>Remove</button></div></div></div>
     <label class="f">Code<input id="p_name" value="${esc(p.name)}"></label>
     <label class="f">Name / type<input id="p_type" value="${esc(p.type)}"></label>
-    <div class="f full"><span>Category</span><div class="seg" role="radiogroup" aria-label="Category" style="grid-template-columns:repeat(2,minmax(0,1fr))">${CATS.map(([k,l])=>`<label class="${k==="final"?"ok":""}"><input type="radio" name="p_cat" value="${k}" ${catOf(p)===k?"checked":""}>${l}<small>${k==="final"?"ready to sell":"still testing"}</small></label>`).join("")}</div></div>
+    <div class="f full"><span>Stage</span><div class="seg" role="radiogroup" aria-label="Stage" style="grid-template-columns:repeat(auto-fit,minmax(118px,1fr))">${STAGES.map(([k,l,d])=>`<label class="${k==="prod"?"ok":""}"><input type="radio" name="p_stage" value="${k}" ${stageOf(p)===k?"checked":""}>${l}<small>${d}</small></label>`).join("")}</div></div>
     ${bambuDrop("p_bb", "Fill the recipe from a Bambu Studio sliced file")}
     <div class="full"><div class="eyebrow" style="margin-bottom:6px">Filament per unit (g)</div><div class="list" id="mats" style="gap:6px">${p.materials.map(matRow).join("")}</div><button class="btn sm" id="addMat" style="margin-top:6px">Add colour</button></div>
     ${durField("p_min", p.minutes, "Print time per piece")}
@@ -1126,7 +1339,7 @@ function productForm(p){
     <label class="f check" style="align-self:end"><input id="p_nfc" type="checkbox" ${p.nfc?"checked":""}> Has NFC chip</label>
     <div class="full calc" id="pcalc"></div>
   </div><div class="foot">${isNew?"":`<button class="btn danger" id="pdel" style="margin-right:auto">Delete</button>`}<button class="btn" data-x>Cancel</button><button class="btn primary" id="psave">Save</button></div>`, m => {
-    const read = () => { p.materials = [...m.querySelectorAll("[data-mi]")].map(r=>({spoolId:r.querySelector("[data-mspool]").value, grams:n(r.querySelector("[data-mg]").value)})); Object.assign(p,{name:$("#p_name").value.trim(), type:$("#p_type").value.trim(), minutes:n($("#p_min").value), extras:n($("#p_ext").value), price:n($("#p_price").value), min:n($("#p_minst").value), stock:n($("#p_stock").value), flush:n($("#p_flush").value), nfc:$("#p_nfc").checked, category:(m.querySelector('input[name="p_cat"]:checked')||{}).value||"final"}); p.grams = Math.round(p.materials.reduce((a,x)=>a+x.grams,0)*100)/100; };
+    const read = () => { p.materials = [...m.querySelectorAll("[data-mi]")].map(r=>({spoolId:r.querySelector("[data-mspool]").value, grams:n(r.querySelector("[data-mg]").value)})); Object.assign(p,{name:$("#p_name").value.trim(), type:$("#p_type").value.trim(), minutes:n($("#p_min").value), extras:n($("#p_ext").value), price:n($("#p_price").value), min:n($("#p_minst").value), stock:n($("#p_stock").value), flush:n($("#p_flush").value), nfc:$("#p_nfc").checked, stage:(m.querySelector('input[name="p_stage"]:checked')||{}).value||"prod"}); p.category = ["idea","dev"].includes(p.stage) ? "prototype" : "final"; p.grams = Math.round(p.materials.reduce((a,x)=>a+x.grams,0)*100)/100; };
     const calc = () => { read(); const k=costParts(p), c=k.total, pr=n(p.price)-c; $("#pcalc").innerHTML = `<div>Filament<b>${money(k.fil)}</b></div><div>Colour-change waste<b>${money(k.flush)}</b></div><div>Printer time<b>${money(k.time)}</b></div><div>Failure allowance<b>${money(k.fail)}</b><small>${Math.round(k.fr*100)}% fail rate</small></div>${k.extras?`<div>Extras<b>${money(k.extras)}</b></div>`:""}<div>Unit cost<b>${money(c)}</b></div><div>Profit<b style="color:var(--${pr>=0?"good":"bad"})">${money(pr)}</b></div><div>Suggested price<b>${suggestPrice(c)?money(suggestPrice(c)):"—"}</b><button class="btn sm ghost" type="button" id="useSug" style="padding:0;margin-top:2px">Use it</button></div>`; const u=$("#useSug"); if (u) u.onclick = () => { $("#p_price").value = suggestPrice(c); calc(); }; };
     const wire = () => m.querySelectorAll("[data-mdel]").forEach(b => b.onclick = () => { b.closest("[data-mi]").remove(); calc(); });
     m.addEventListener("input", calc); m.addEventListener("change", calc); wire(); calc();
@@ -1213,7 +1426,7 @@ function logProductEdit(before, after){
   if (!before){ S.edits.unshift({id:uid(), product:after.id, at, created:true, changes:[]}); persist("edits"); return; }
   const f = (label, a, b, show) => { if (String(a ?? "") !== String(b ?? "")) ch.push({label, from: show ? show(a) : a, to: show ? show(b) : b}); };
   f("Code", before.name, after.name); f("Name", before.type, after.type);
-  f("Category", catOf(before), catOf(after), v => v === "prototype" ? "Prototype" : "Final");
+  f("Stage", stageOf(before), stageOf(after), v => (STAGES.find(x => x[0] === v)||[])[1]);
   f("Price", n(before.price), n(after.price), money); f("Print time", n(before.minutes), n(after.minutes), hrs);
   f("Minimum stock", n(before.min), n(after.min)); f("Extras", n(before.extras), n(after.extras), money);
   f("Colour-change waste", n(before.flush), n(after.flush), v => g(v)+" g"); f("NFC chip", !!before.nfc, !!after.nfc, v => v ? "Yes" : "No");
@@ -1226,7 +1439,7 @@ function productActivity(pid){
   S.prints.filter(x => x.product === pid).forEach(pr => {
     const q = n(pr.qty)||1, gq = goodOf(pr);
     const res = gq >= q ? "Success" : gq > 0 ? `Partial ${gq}/${q}` : (pr.progress ? `Failed at ${pr.progress}%` : "Failed");
-    ev.push({at:when(pr.at, pr.date), kind:"print", delta:gq, what:`Printed ${q} · ${res}`,
+    ev.push({at:when(pr.at, pr.date), kind:"print", delta:pr.dev ? 0 : gq, what:`${pr.dev ? "Test print" : "Printed"} ${q} · ${res}`,
       detail:[`${g(pr.grams)} g`, hrs(pr.minutes), `${money(pr.cost)} ${cur()}`, pr.failReason, pr.notes].filter(Boolean).join(" · "), tone: gq >= q ? "good" : gq > 0 ? "warn" : "bad"});
   });
   S.orders.filter(o => o.status === "delivered").forEach(o => (o.items||[]).filter(i => i.product === pid).forEach(i =>
@@ -1257,7 +1470,7 @@ function productView(pid){
   const soldU = sold.reduce((a,i)=>a+n(i.qty),0), rev = sold.reduce((a,i)=>a+n(i.qty)*n(i.price),0);
   const last = prints.map(x => x.date).sort().pop();
   modal(p.name, `${p.photo ? `<img class="hero" data-photo="${p.id}" alt="${esc(p.name)}">` : `<div class="hero ph ro-hide"><span>No photo yet</span><button class="btn sm" id="pv_photo" type="button">Add photo</button></div>`}
-    <div class="row" style="justify-content:space-between;margin-top:12px"><div><div class="name" style="font-size:16px">${esc(p.type)||"&nbsp;"}</div><div class="meta">${catOf(p)==="prototype"?"Prototype · still testing":"Final product · ready to sell"}${p.nfc?" · NFC chip":""}</div></div>${catPill(p)}</div>
+    <div class="row" style="justify-content:space-between;margin-top:12px"><div><div class="name" style="font-size:16px">${esc(p.type)||"&nbsp;"}</div><div class="meta">${stageInfo(p)[1]} · ${stageInfo(p)[2]}${p.nfc?" · NFC chip":""}</div></div>${catPill(p)}</div>
     <div class="vgrid">
       <div><span class="meta">Price</span><b>${money(p.price)}</b>${suggestPrice(c)?`<span class="meta">suggested ${money(suggestPrice(c))}</span>`:""}</div>
       <div><span class="meta">Unit cost</span><b>${money(c)}</b></div>
@@ -1462,20 +1675,27 @@ function printForm(pid, qty0){
     <label class="f">Date<input id="r_date" type="date" value="${today()}"></label>
     <label class="f">Units in this print<input id="r_qty" type="number" min="1" value="${n(qty0)||1}"></label>
     ${durField("r_min", p.minutes, "Print time")}
+    <div class="f full" id="r_purpose"><span>Purpose</span><div class="seg" role="radiogroup" aria-label="Purpose" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+      <label class="ok"><input type="radio" name="purpose" value="prod">Production<small>good pieces go to stock</small></label>
+      <label><input type="radio" name="purpose" value="dev">Development test<small>doesn't add to stock</small></label></div></div>
     <div class="full"><div class="eyebrow" style="margin-bottom:6px">How did it go?</div>${resultFields(1)}</div>
     <div class="full"><div class="eyebrow" style="margin-bottom:6px">Filament used (g) – filled from the recipe, adjust to the slicer or scale</div><div id="r_use" class="list" style="gap:6px"></div></div>
     <label class="f full">Notes<input id="r_notes" placeholder="e.g. layer shift at 40%"></label>
     <div class="full calc" id="rcalc"></div>
   </div><div class="foot"><button class="btn" data-x>Cancel</button><button class="btn primary" id="rsave">Save print</button></div>`, m => {
-    const fill = () => { p = printTarget($("#r_p").value); const q = n($("#r_qty").value)||1; setDur("r_min", n(p.minutes)*q);
+    let purposeFor = null;
+    const setPurpose = () => { if (purposeFor === p.id) return; purposeFor = p.id; const box = $("#r_purpose"), st = p.special ? "special" : stageOf(p);
+      box.hidden = st === "special" || st === "prod" || st === "retired";
+      const want = ["idea","dev"].includes(st) ? "dev" : "prod"; const r0 = m.querySelector(`input[name="purpose"][value="${want}"]`); if (r0) r0.checked = true; };
+    const fill = () => { p = printTarget($("#r_p").value); setPurpose(); const q = n($("#r_qty").value)||1; setDur("r_min", n(p.minutes)*q);
       const rows = usageRows(p,q).filter(u=>u.grams>0); const used = new Set(rows.map(r=>r.id));
       $("#r_use").innerHTML = rows.map(u=>useRow(u)).join("") + `<details><summary class="meta" style="cursor:pointer">Other spools</summary><div class="list" style="gap:6px;margin-top:6px">${S.spools.filter(s=>!used.has(s.id)).map(s=>useRow({id:s.id,grams:0})).join("")}</div></details>`; calc(); };
     const useRow = u => { const s=spool(u.id); return `<div class="mat" style="grid-template-columns:minmax(0,1fr) 100px"><span class="row" style="gap:8px;min-width:0"><span class="sw" style="background:${hex(s.color)}"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.name.trim())}</span><span class="meta num">${g(s.remaining)} left</span></span><input type="number" step="0.01" min="0" data-use="${s.id}" value="${u.grams}" aria-label="Grams of ${esc(s.name)}"></div>`; };
     const read = () => { const q = n($("#r_qty").value)||1, rr = readResult(m, q), f = rr.progress/100;
-      return {product:$("#r_p").value, date:$("#r_date").value, qty:q, minutes:Math.round(n($("#r_min").value)*f), ...rr, notes:$("#r_notes").value.trim(), usage:[...m.querySelectorAll("[data-use]")].map(i=>({id:i.dataset.use, grams:Math.round(n(i.value)*f*100)/100}))}; };
+      return {dev: !p.special && (m.querySelector('input[name="purpose"]:checked')||{}).value === "dev", product:$("#r_p").value, date:$("#r_date").value, qty:q, minutes:Math.round(n($("#r_min").value)*f), ...rr, notes:$("#r_notes").value.trim(), usage:[...m.querySelectorAll("[data-use]")].map(i=>({id:i.dataset.use, grams:Math.round(n(i.value)*f*100)/100}))}; };
     const calc = () => { const r = read(); const mc = r.usage.reduce((a,u)=>a+u.grams*ppg(spool(u.id)),0); const tc = r.minutes/60*runRate(); const ex = n(p.extras)*r.qty; const c = mc+tc+ex;
       const over = r.usage.find(u=>u.grams > n(spool(u.id)?.remaining));
-      $("#rcalc").innerHTML = `<div>Filament<b>${g(r.usage.reduce((a,u)=>a+u.grams,0))} g</b></div><div>Batch cost<b>${money(c)}</b></div><div>Per unit<b>${money(c/r.qty)}</b></div><div>${p.special?"For":"Stock after"}<b>${p.special?"Special order":n(p.stock)+r.goodQty}</b></div>${r.progress<100?`<div class="full" style="grid-column:1/-1">Counting ${r.progress}% of the filament and time: ${g(r.usage.reduce((a,u)=>a+u.grams,0))} g, ${hrs(r.minutes)}.</div>`:""}${over?`<div class="full alert bad" style="grid-column:1/-1">${esc(spool(over.id).name.trim())} only has ${g(spool(over.id).remaining)} g left.</div>`:""}`; };
+      $("#rcalc").innerHTML = `<div>Filament<b>${g(r.usage.reduce((a,u)=>a+u.grams,0))} g</b></div><div>Batch cost<b>${money(c)}</b></div><div>Per unit<b>${money(c/r.qty)}</b></div><div>${p.special?"For":r.dev?"Counts as":"Stock after"}<b>${p.special?"Special order":r.dev?"Development":n(p.stock)+r.goodQty}</b></div>${r.progress<100?`<div class="full" style="grid-column:1/-1">Counting ${r.progress}% of the filament and time: ${g(r.usage.reduce((a,u)=>a+u.grams,0))} g, ${hrs(r.minutes)}.</div>`:""}${over?`<div class="full alert bad" style="grid-column:1/-1">${esc(spool(over.id).name.trim())} only has ${g(spool(over.id).remaining)} g left.</div>`:""}`; };
     $("#r_p").onchange = fill; $("#r_qty").oninput = () => { fill(); syncResult(m); }; m.addEventListener("input", e => { if (e.target.id!=="r_qty") calc(); }); m.addEventListener("change", () => { syncResult(m); calc(); });
     fill(); syncResult(m);
     let fromFile = false;
@@ -1493,7 +1713,7 @@ function printForm(pid, qty0){
       syncResult(m); calc(); toast("Filled from " + r.name);
     }});
     m.querySelector("[data-x]").onclick = close;
-    $("#rsave").onclick = () => { try{ const r = read(); logPrint(r); close(); render(); toast(r.goodQty>=r.qty ? "Print logged · stock +"+r.goodQty : r.goodQty>0 ? `Logged · ${r.goodQty} good, ${r.qty-r.goodQty} wasted` : "Failed print logged as waste"); }catch(e){ console.error(e); toast("Couldn't save the print: "+(e.message||e)); } };
+    $("#rsave").onclick = () => { try{ const r = read(); logPrint(r); close(); render(); toast(r.dev ? "Development test print logged" : r.goodQty>=r.qty ? "Print logged · stock +"+r.goodQty : r.goodQty>0 ? `Logged · ${r.goodQty} good, ${r.qty-r.goodQty} wasted` : "Failed print logged as waste"); }catch(e){ console.error(e); toast("Couldn't save the print: "+(e.message||e)); } };
   });
 }
 
@@ -1700,7 +1920,11 @@ function bind(){
   M.querySelectorAll("[data-act]").forEach(b => b.onclick = () => ({
     newExpense:()=>expenseForm(), newProduct:()=>productForm(), newPrint:()=>printForm(), newSpool:()=>spoolForm(), newOrder:()=>orderForm(),
     import:importFile, export:exportFile,
-    syncNow:()=>syncNow(true), shareView:shareInviteForm, history:historyForm,
+    syncNow:()=>syncNow(true), shareView:shareInviteForm, history:historyForm, replaceToken:replaceTokenForm,
+    excel:()=>exportExcel(filter.rp || "all"), excelAll:()=>exportExcel("all"), newMaint:()=>maintForm(),
+    savePH:()=>{ const nv = Math.max(0, n($("#ph_start").value)), d = nv - n(S.settings.printerStartHours); S.settings.printerStartHours = nv;
+      S.maint.forEach(t => { if (!(t.history||[]).length) t.doneHours = n(t.doneHours) + d; }); persist("settings","maint"); render(); toast("Printer hours saved"); },
+    saveInv:()=>{ S.settings.invoiceContact = $("#s_ic").value.trim(); S.settings.invoiceThanks = $("#s_it").value.trim(); persist("settings"); toast("Invoice details saved"); },
     useInvite:()=>useInvite($("#inv_text").value),
     copyInvite:()=>{ let l=""; try{ l=localStorage.getItem("wav-invite")||""; }catch(e){} if (l) copyText(l, "Invite link copied. Paste it in the app after adding it to your Home Screen."); }, syncOff:()=>confirmBox("Turn off sync on this device? Your data stays here, and other devices keep syncing.","Turn off",disconnectSync),
     syncConnect:()=>{ const o=$("#sy_owner").value, r=$("#sy_repo").value, t=$("#sy_token").value; if (!o.trim()||!r.trim()||!t.trim()) return toast("Fill in account, repository and token"); toast("Connecting…"); connectSync(o, r, t, $("#sy_ro").checked); },
@@ -1715,6 +1939,9 @@ function bind(){
   M.querySelectorAll("[data-adjp]").forEach(b => b.onclick = () => adjustStockForm(product(b.dataset.adjp)));
   M.querySelectorAll("[data-sell]").forEach(b => b.onclick = () => sellForm(product(b.dataset.sell)));
   M.querySelectorAll("[data-ep]").forEach(b => b.onclick = () => { filter.ep = b.dataset.ep; render(); });
+  M.querySelectorAll("[data-inv]").forEach(b => b.onclick = () => invoiceForm(S.orders.find(o => o.id === b.dataset.inv)));
+  M.querySelectorAll("[data-mdone]").forEach(b => b.onclick = () => { const t = S.maint.find(x => x.id === b.dataset.mdone); t.doneHours = printerHours(); t.doneAt = new Date().toISOString(); t.history = [t.doneAt, ...(t.history||[])].slice(0,20); persist("maint"); render(); toast(`"${t.name}" marked done`); });
+  M.querySelectorAll("[data-medit]").forEach(b => b.onclick = () => maintForm(S.maint.find(x => x.id === b.dataset.medit)));
   M.querySelectorAll("[data-edite]").forEach(b => b.onclick = () => expenseForm(S.expenses.find(x => x.id === b.dataset.edite)));
   M.querySelectorAll("[data-estop]").forEach(b => b.onclick = () => { const e = S.expenses.find(x => x.id === b.dataset.estop); confirmBox(`Stop "${e.desc||e.category}" from this month on? Past months stay recorded.`, "Stop", () => { e.stopped = today(); persist("expenses"); render(); toast("Monthly cost stopped"); }); });
   M.querySelectorAll("[data-pc]").forEach(b => b.onclick = () => { filter.pc = b.dataset.pc; render(); });
@@ -1745,9 +1972,10 @@ $("#fab").onclick = () => modal("Quick add", `<div class="sheet">
   <button data-q="order">New order<small>for later delivery</small></button>
   <button data-q="product">New product<small>with cost recipe</small></button>
   <button data-q="spool">New spool<small>filament</small></button>
+  <button data-q="maint">Printer care<small>maintenance tasks</small></button>
   <button data-q="expense">New expense<small>purchase or running cost</small></button>
   <button data-q="idea">New idea<small>note it down</small></button></div>`, m => m.querySelectorAll("[data-q]").forEach(b => b.onclick = () => { close(); ({
-    print:()=>printForm(), order:()=>orderForm(), product:()=>productForm(), spool:()=>spoolForm(), idea:()=>noteForm("ideas"), expense:()=>expenseForm(),
+    print:()=>printForm(), order:()=>orderForm(), product:()=>productForm(), spool:()=>spoolForm(), idea:()=>noteForm("ideas"), expense:()=>expenseForm(), maint:()=>go("printer"),
     sell:()=>{ const ps = S.products.filter(p=>n(p.stock)>0); if (!ps.length) return toast("Nothing in stock to sell"); modal("Sell which product?", `<div class="sheet">${ps.map(p=>`<button data-sp="${p.id}">${esc(p.name)}<small>${esc(p.type)} · ${n(p.stock)} in stock</small></button>`).join("")}</div>`, mm => mm.querySelectorAll("[data-sp]").forEach(x => x.onclick = () => { close(); sellForm(product(x.dataset.sp)); })); }
   })[b.dataset.q](); }));
 const h = (location.hash||"").slice(1); if (VIEWS.some(v=>v[0]===h)) view = h;
