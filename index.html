@@ -212,6 +212,7 @@ textarea{min-height:80px;resize:vertical}
   .kv{font-size:20px}
 }
 .mobile-only,.fab,.nav button.mobile-only{display:none}
+.fab[hidden]{display:none!important}
 body.ro [data-poedit],body.ro [data-porecv],body.ro [data-supedit],body.ro [data-supstep],body.ro [data-supcount],body.ro [data-reo],body.ro [data-jup],body.ro [data-jdown],body.ro [data-jprint],body.ro [data-jedit],body.ro [data-sug],body.ro [data-cdel],body.ro [data-wd],body.ro [data-mdone],body.ro [data-medit],body.ro [data-act="savePH"],body.ro #ph_start,body.ro [data-inv-hide],body.ro [data-edite],body.ro [data-estop],body.ro .fab,body.ro [data-act]:not([data-act="syncNow"]):not([data-act="syncOff"]):not([data-act="export"]),body.ro [data-step],body.ro [data-sell],body.ro [data-adjp],body.ro [data-editp],body.ro [data-print],body.ro [data-edits],body.ro [data-adj],body.ro [data-edito],body.ro [data-delpr],body.ro [data-note],body.ro [data-editn],body.ro [data-restore],body.ro .ro-hide{display:none!important}
 body.ro [data-res],body.ro [data-paid],body.ro [data-count],body.ro [data-ostatus],body.ro .ro-lock{pointer-events:none}
 body.ro [data-count]{border-color:transparent;background:transparent}
@@ -277,7 +278,7 @@ body.ro [data-count]{border-color:transparent;background:transparent}
 <script>
 (() => {
 const KEYS = ["products","spools","prints","orders","moves","fil","edits","expenses","maint","plan","supplies","smoves","pos","ideas","lessons","settings","trash"];
-const APP_VERSION = "2026.11.17e";
+const APP_VERSION = "2026.11.17f";
 const blank = () => ({products:[],spools:[],prints:[],orders:[],moves:[],fil:[],edits:[],expenses:[],maint:[],plan:[],supplies:[],smoves:[],pos:[],ideas:[],lessons:[],settings:{hour:2,energy:0.2,wear:0,failAllow:true,workspace:"WAV",currency:"SAR",feePct:0,packaging:0,targetMargin:50},trash:[]});
 let S = blank();
 let view = "home", db = null, mode = "local", loaded = false, filter = {};
@@ -757,7 +758,7 @@ function render(){
     td.insertAdjacentHTML("beforeend", `<button class="xbtn mobile-only" type="button" aria-expanded="false">Show details ▾</button>`);
     const b = td.querySelector(".xbtn"); b.onclick = () => { const o = tr.classList.toggle("open"); b.setAttribute("aria-expanded", o); b.textContent = o ? "Hide details ▴" : "Show details ▾"; }; });
   $("#main").querySelectorAll('input:not([type]),input[type="text"],textarea').forEach(i => i.dir = "auto");
-  hydratePhotos($("#main")); updateBadge();
+  hydratePhotos($("#main")); updateBadge(); syncFab();
   bind();
 }
 
@@ -2163,6 +2164,7 @@ function orderForm(o, preset){
   const isNew = !o; o = o ? JSON.parse(JSON.stringify(o)) : {id:uid(), customer:"", contact:"", channel:S.settings.lastChannel||CHANNELS[0], paid:false, due:"", status:"new", discount:0, shipCharge:0, shipCost:0, notes:"", items:S.products.length?[{product:S.products[0].id, qty:1, price:n(S.products[0].price)}]:[], created:today(), kind:S.products.length?"products":"special"};
   if (preset && preset.items && !preset.items.length) preset = null;
   if (preset && preset.items){ o.items = preset.items; o.kind = "products"; }
+  if (preset && preset.kind === "special") o.kind = "special";
   if (!o.custom) o.custom = {desc:"", price:0, deposit:0, est:[], estMin:0, photo:null};
   const estRow = (e,i) => `<div class="mat" data-ei="${i}"><select data-espool aria-label="Spool">${spoolOptions(e.spoolId)}</select><input data-eg type="number" step="0.01" min="0" value="${n(e.grams)}" aria-label="Grams"><button class="btn sm ghost" data-edel type="button" aria-label="Remove">✕</button></div>`;
   const itemRow = (it,i) => `<div class="mat" data-oi="${i}" style="grid-template-columns:minmax(0,1fr) 70px 90px auto"><select data-op aria-label="Product">${S.products.map(p=>`<option value="${p.id}" ${p.id===it.product?"selected":""}>${esc(p.name)} · ${esc(p.type)}</option>`).join("")}</select><input data-oq type="number" min="1" value="${n(it.qty)}" aria-label="Quantity"><input data-opr type="number" step="0.01" value="${n(it.price)}" aria-label="Unit price"><button class="btn sm ghost" data-odel aria-label="Remove">✕</button></div>`;
@@ -2368,21 +2370,25 @@ function bind(){
   const pq = $("#pq"); if (pq){ pq.oninput = () => { filter.p = pq.value; const pos = pq.selectionStart; render(); const n2=$("#pq"); n2.focus(); n2.setSelectionRange(pos,pos); }; }
 }
 
-$("#fab").onclick = () => modal("Quick add", `<div class="sheet">
-  <button data-q="print">Log a print<small>deducts filament</small></button>
-  <button data-q="sell">Quick sale<small>takes from stock</small></button>
-  <button data-q="order">New order<small>for later delivery</small></button>
-  <button data-q="product">New product<small>with cost recipe</small></button>
-  <button data-q="spool">New spool<small>filament</small></button>
-  <button data-q="po">Purchase order<small>filament or materials</small></button>
-  <button data-q="job">Plan production<small>add to the queue</small></button>
-  <button data-q="calc">How long would it take?<small>order calculator</small></button>
-  <button data-q="maint">Printer care<small>maintenance tasks</small></button>
-  <button data-q="expense">New expense<small>purchase or running cost</small></button>
-  <button data-q="idea">New idea<small>note it down</small></button></div>`, m => m.querySelectorAll("[data-q]").forEach(b => b.onclick = () => { close(); ({
-    print:()=>printForm(), order:()=>orderForm(), product:()=>productForm(), spool:()=>spoolForm(), idea:()=>noteForm("ideas"), expense:()=>expenseForm(), maint:()=>go("printer"), job:()=>jobForm(), po:()=>poForm(), calc:()=>{ filter.pt = "calc"; go("plan"); },
-    sell:()=>{ const ps = S.products.filter(p=>n(p.stock)>0); if (!ps.length) return toast("Nothing in stock to sell"); modal("Sell which product?", `<div class="sheet">${ps.map(p=>`<button data-sp="${p.id}">${esc(p.name)}<small>${esc(p.type)} · ${n(p.stock)} in stock</small></button>`).join("")}</div>`, mm => mm.querySelectorAll("[data-sp]").forEach(x => x.onclick = () => { close(); sellForm(product(x.dataset.sp)); })); }
-  })[b.dataset.q](); }));
+/* Quick add follows the page you're on: one action runs straight away, several show just that page's options, and "More" opens everything. */
+const QA = {
+  print:["Log a print","deducts filament",()=>printForm()], sell:["Quick sale","takes from stock",()=>{ const ps = S.products.filter(p=>n(p.stock)>0); if (!ps.length) return toast("Nothing in stock to sell"); modal("Sell which product?", `<div class="sheet">${ps.map(p=>`<button data-sp="${p.id}">${esc(p.name)}<small>${esc(p.type)} · ${n(p.stock)} in stock</small></button>`).join("")}</div>`, mm => mm.querySelectorAll("[data-sp]").forEach(x => x.onclick = () => { close(); sellForm(product(x.dataset.sp)); })); }],
+  order:["New order","for later delivery",()=>orderForm()], special:["Special order","custom work for a customer",()=>orderForm(null, {kind:"special"})],
+  product:["New product","with cost recipe",()=>productForm()], spool:["New spool","filament",()=>spoolForm()],
+  po:["Purchase order","filament or materials",()=>poForm()], supply:["New material","magnets, chips, boxes…",()=>supplyForm()],
+  job:["Plan production","add to the queue",()=>jobForm()], calc:["How long would it take?","order calculator",()=>{ filter.pt = "calc"; go("plan"); }],
+  maint:["Maintenance task","printer care",()=>maintForm()], expense:["New expense","purchase or running cost",()=>expenseForm()],
+  idea:["New idea","note it down",()=>noteForm("ideas")], lesson:["New lesson","what you learned",()=>noteForm("lessons")]
+};
+const QA_PAGE = {home:["print","sell","order","job"], stock:["sell","print","job"], orders:["order","special","sell"], reports:["sell","order"], expenses:["expense"], plan:["job","calc"],
+  printer:["maint","print"], products:["product"], prints:["print"], spools:["spool","po"], purchases:["po","supply"], notes:["idea","lesson"]};
+const QA_ALL = ["print","sell","order","special","product","spool","po","supply","job","calc","maint","expense","idea","lesson"];
+function quickSheet(keys, title, more){
+  modal(title, `<div class="sheet">${keys.map(k => `<button data-q="${k}">${QA[k][0]}<small>${QA[k][1]}</small></button>`).join("")}${more ? `<button data-q="__all" class="ghost">More…<small>every shortcut</small></button>` : ""}</div>`,
+    m => m.querySelectorAll("[data-q]").forEach(b => b.onclick = () => { close(); if (b.dataset.q === "__all") return quickSheet(QA_ALL, "Quick add", false); QA[b.dataset.q][2](); }));
+}
+function syncFab(){ const f = $("#fab"), keys = QA_PAGE[view]; f.hidden = !keys || document.body.classList.contains("ro"); if (keys) f.setAttribute("aria-label", keys.length === 1 ? QA[keys[0]][0] : "Add"); }
+$("#fab").onclick = () => { const keys = QA_PAGE[view] || QA_ALL; if (keys.length === 1) return QA[keys[0]][2](); quickSheet(keys, (VIEWS.find(v => v[0] === view)||[,"Quick add"])[1], true); };
 const h = (location.hash||"").slice(1); if (VIEWS.some(v=>v[0]===h)) view = h;
 if (/invite=/.test(location.hash)){
   const link = location.href;
