@@ -212,7 +212,7 @@ textarea{min-height:80px;resize:vertical}
   .kv{font-size:20px}
 }
 .mobile-only,.fab,.nav button.mobile-only{display:none}
-body.ro [data-mdone],body.ro [data-medit],body.ro [data-act="savePH"],body.ro #ph_start,body.ro [data-inv-hide],body.ro [data-edite],body.ro [data-estop],body.ro .fab,body.ro [data-act]:not([data-act="syncNow"]):not([data-act="syncOff"]):not([data-act="export"]),body.ro [data-step],body.ro [data-sell],body.ro [data-adjp],body.ro [data-editp],body.ro [data-print],body.ro [data-edits],body.ro [data-adj],body.ro [data-edito],body.ro [data-delpr],body.ro [data-note],body.ro [data-editn],body.ro [data-restore],body.ro .ro-hide{display:none!important}
+body.ro [data-jup],body.ro [data-jdown],body.ro [data-jprint],body.ro [data-jedit],body.ro [data-sug],body.ro [data-cdel],body.ro [data-wd],body.ro [data-mdone],body.ro [data-medit],body.ro [data-act="savePH"],body.ro #ph_start,body.ro [data-inv-hide],body.ro [data-edite],body.ro [data-estop],body.ro .fab,body.ro [data-act]:not([data-act="syncNow"]):not([data-act="syncOff"]):not([data-act="export"]),body.ro [data-step],body.ro [data-sell],body.ro [data-adjp],body.ro [data-editp],body.ro [data-print],body.ro [data-edits],body.ro [data-adj],body.ro [data-edito],body.ro [data-delpr],body.ro [data-note],body.ro [data-editn],body.ro [data-restore],body.ro .ro-hide{display:none!important}
 body.ro [data-res],body.ro [data-paid],body.ro [data-count],body.ro [data-ostatus],body.ro .ro-lock{pointer-events:none}
 body.ro [data-count]{border-color:transparent;background:transparent}
 .sheet{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
@@ -276,9 +276,9 @@ body.ro [data-count]{border-color:transparent;background:transparent}
 
 <script>
 (() => {
-const KEYS = ["products","spools","prints","orders","moves","fil","edits","expenses","maint","ideas","lessons","settings","trash"];
-const APP_VERSION = "2026.11.17c";
-const blank = () => ({products:[],spools:[],prints:[],orders:[],moves:[],fil:[],edits:[],expenses:[],maint:[],ideas:[],lessons:[],settings:{hour:2,energy:0.2,wear:0,failAllow:true,workspace:"WAV",currency:"SAR",feePct:0,packaging:0,targetMargin:50},trash:[]});
+const KEYS = ["products","spools","prints","orders","moves","fil","edits","expenses","maint","plan","ideas","lessons","settings","trash"];
+const APP_VERSION = "2026.11.17d";
+const blank = () => ({products:[],spools:[],prints:[],orders:[],moves:[],fil:[],edits:[],expenses:[],maint:[],plan:[],ideas:[],lessons:[],settings:{hour:2,energy:0.2,wear:0,failAllow:true,workspace:"WAV",currency:"SAR",feePct:0,packaging:0,targetMargin:50},trash:[]});
 let S = blank();
 let view = "home", db = null, mode = "local", loaded = false, filter = {};
 const LS = "wav-app-v1";
@@ -390,7 +390,7 @@ function mergeState(Lc, Rc){
   const tmap = new Map(); [...Rm.trash, ...L.trash].forEach(t => tmap.set(t.id, t));
   const deadAt = {}; tmap.forEach(t => { const id = t.record && t.record.id; if (id) deadAt[id] = Math.max(deadAt[id]||0, Date.parse(t.deletedAt)||0); });
   const alive = x => x && (!(x.id in deadAt) || (Date.parse(x._restoredAt)||0) > deadAt[x.id]);
-  ["products","spools","prints","orders","moves","fil","edits","expenses","maint","ideas","lessons"].forEach(k => {
+  ["products","spools","prints","orders","moves","fil","edits","expenses","maint","plan","ideas","lessons"].forEach(k => {
     const m = new Map(); Rm[k].forEach(x => m.set(x.id, x)); L[k].forEach(x => m.set(x.id, x));
     const seen = new Set(), list = [];
     L[k].forEach(x => { if (!seen.has(x.id)){ seen.add(x.id); list.push(m.get(x.id)); } });
@@ -703,7 +703,7 @@ const spoolOptions = sel => S.spools.map(s => `<option value="${s.id}" ${s.id===
 
 /* ---------- nav ---------- */
 const VIEWS = [
-  ["home","Overview"],["stock","Inventory"],["orders","Orders"],["reports","Sales"],["expenses","Expenses"],["printer","Printer"],["products","Products"],["prints","Print log"],["spools","Filament"],
+  ["home","Overview"],["stock","Inventory"],["orders","Orders"],["reports","Sales"],["expenses","Expenses"],["plan","Planning"],["printer","Printer"],["products","Products"],["prints","Print log"],["spools","Filament"],
   ["notes","Ideas & lessons"],["settings","Settings"]
 ];
 function counts(k){
@@ -714,7 +714,8 @@ function counts(k){
   if (k==="orders") return S.orders.filter(o=>o.status!=="delivered" && o.status!=="cancelled").length || "";
   if (k==="notes") return S.ideas.length + S.lessons.length || "";
   if (k==="expenses") return "";
-  if (k==="printer") return S.maint.length ? (maintDue().filter(x=>x.left<=0).length || "") : "";
+  if (k==="printer") return S.maint.length ? (maintDue().filter(x=>x.due).length || "") : "";
+  if (k==="plan") return openJobs().length || "";
   return "";
 }
 const ICON = {
@@ -740,14 +741,14 @@ function go(v){ view = v; try{ history.replaceState(null,"","#"+v); }catch(e){} 
 function render(){
   recompute();
   renderNav();
-  const fn = {printer:vPrinter, home:vHome, stock:vStock, reports:vReports, expenses:vExpenses, products:vProducts, prints:vPrints, spools:vSpools, orders:vOrders, notes:vNotes, settings:vSettings}[view] || vHome;
+  const fn = {plan:vPlan, printer:vPrinter, home:vHome, stock:vStock, reports:vReports, expenses:vExpenses, products:vProducts, prints:vPrints, spools:vSpools, orders:vOrders, notes:vNotes, settings:vSettings}[view] || vHome;
   $("#main").innerHTML = fn();
   $("#main").querySelectorAll(".tablewrap table").forEach(t => { const hs = [...t.querySelectorAll("thead th")].map(th => th.textContent.trim()); t.querySelectorAll("tbody tr").forEach(tr => [...tr.children].forEach((td,i) => td.setAttribute("data-label", hs[i]||""))); });
   $("#main").querySelectorAll("table[data-compact] tbody tr").forEach(tr => { tr.classList.add("cx"); const td = tr.firstElementChild; if (!td) return;
     td.insertAdjacentHTML("beforeend", `<button class="xbtn mobile-only" type="button" aria-expanded="false">Show details ▾</button>`);
     const b = td.querySelector(".xbtn"); b.onclick = () => { const o = tr.classList.toggle("open"); b.setAttribute("aria-expanded", o); b.textContent = o ? "Hide details ▴" : "Show details ▾"; }; });
   $("#main").querySelectorAll('input:not([type]),input[type="text"],textarea').forEach(i => i.dir = "auto");
-  hydratePhotos($("#main"));
+  hydratePhotos($("#main")); updateBadge();
   bind();
 }
 
@@ -771,7 +772,8 @@ function vHome(){
   if (!syncOn() && S.products.length && (!lb || (Date.now()-new Date(lb))/864e5 > 7)) alerts.unshift(["warn", lb ? `Last backup was ${fmtDate(lb.slice(0,10))}. Your data lives on this phone only; export a backup to Files or iCloud.` : "Your data lives on this device only. Turn on cloud sync in Settings, or export a backup."]);
   const plan = restockPlan(); if (plan.length) alerts.push(["warn", `${plan.length} product${plan.length>1?"s":""} below minimum. Restock plan: ${plan.reduce((a,x)=>a+x.need,0)} units, about ${hrs(plan.reduce((a,x)=>a+x.minutes,0))} of printing.`]);
   S.orders.filter(o=>OPEN.includes(o.status) && o.due && o.due < today()).forEach(o => alerts.push(["bad", `Order for ${o.customer||"a customer"} was due ${fmtDate(o.due)}`]));
-  if (S.maint.length) maintDue().filter(x => x.left <= 0).forEach(x => alerts.push(["warn", `Printer: "${x.t.name}" is due (${Math.round(x.since)} h since last time)`]));
+  if (S.maint.length) maintDue().forEach(x => { if (x.due) alerts.push(["warn", `Printer: "${x.t.name}" is due (${Math.round(x.since)} h since last time)`]); else if (x.inDays <= 2) alerts.push(["warn", `Printer: "${x.t.name}" is coming up around ${dstr(x.eta)}`]); });
+  { const sch = schedule(); if (sch.length){ const tot = sch.reduce((a,x)=>a+x.m,0); alerts.push([sch.some(x=>x.lateBy)?"bad":"warn", `Production queue: ${hrs(tot)} of printing, done around ${dstr(dateAfter(tot))}${sch.some(x=>x.lateBy)?` · ${sch.filter(x=>x.lateBy).length} job(s) will miss their due date`:""}`]); } }
   if (dataSizeKB() > 800) alerts.push(["warn", `Your data is ${dataSizeKB()} KB. Sync still works, but ask Claude to add yearly archiving soon.`]);
   if (syncOn() && !SY.readonly && SY.connectedAt && (Date.now() - new Date(SY.connectedAt)) / 864e5 > 330) alerts.push(["warn", "Your GitHub token is almost a year old. Make a new one and use Settings → Cloud sync → Replace token."]);
   S.orders.filter(o=>o.status==="delivered" && !o.paid).forEach(o => alerts.push(["warn", `${o.customer||"A customer"} hasn't paid ${money(orderDue(o))} ${cur()} (delivered)`]));
@@ -1137,19 +1139,26 @@ const MAINT_DEFAULTS = [["Clean the build plate",15],["Clean the nozzle and chec
 function printerHours(){ return n(S.settings.printerStartHours) + S.prints.reduce((a,pr)=>a+n(pr.minutes),0)/60; }
 function ensureMaint(){ if (S.maint.length || S.settings.maintSeeded) return false; const h = printerHours(), at = new Date().toISOString();
   S.maint = MAINT_DEFAULTS.map(([name, every]) => ({id:uid(), name, every, doneHours:h, doneAt:at, history:[]})); S.settings.maintSeeded = true; persist("maint","settings"); return true; }
-function maintDue(){ const h = printerHours(); return S.maint.map(t => ({t, since:h - n(t.doneHours), left:n(t.every) - (h - n(t.doneHours))})).sort((a,b) => a.left - b.left); }
+function maintDue(){
+  const h = printerHours(), avg = avgPrintHoursPerDay(), now = Date.now();
+  return S.maint.map(t => { const since = h - n(t.doneHours), left = n(t.every) - since, dsince = t.doneAt ? (now - new Date(t.doneAt))/864e5 : 0, dleft = n(t.days) ? n(t.days) - dsince : Infinity;
+    const byH = avg > 0.05 ? left/avg : Infinity, inDays = Math.max(0, Math.min(byH, dleft)), eta = isFinite(inDays) ? new Date(now + inDays*864e5) : null;
+    return {t, since, left, dsince, dleft, due: left <= 0 || dleft <= 0, eta, inDays}; }).sort((a,b) => (a.due===b.due ? (a.inDays - b.inDays) || (a.left - b.left) : a.due ? -1 : 1));
+}
 function vPrinter(){
   ensureMaint(); const h = printerHours(), month = S.prints.filter(pr => ym(pr.date) === ym(today())).reduce((a,pr)=>a+n(pr.minutes),0)/60, list = maintDue();
   return head("Printer", "Printing hours come from your print log. Intervals are suggestions; set them from your printer's manual.", `<button class="btn primary" data-act="newMaint">Add task</button>`) + `
   <div class="strip">
     <div><div class="eyebrow">Printer hours</div><div class="kv">${Math.round(h)}<small>h</small></div><div class="kd">${n(S.settings.printerStartHours)?`incl. ${Math.round(n(S.settings.printerStartHours))} h before the app`:"from your print log"}</div></div>
     <div><div class="eyebrow">This month</div><div class="kv">${Math.round(month*10)/10}<small>h</small></div><div class="kd">printing time</div></div>
-    <div><div class="eyebrow">Due now</div><div class="kv">${list.filter(x=>x.left<=0).length}</div><div class="kd">maintenance tasks</div></div>
-    <div><div class="eyebrow">Next</div><div class="kv" style="font-size:16px;white-space:normal">${list[0]?esc(list[0].t.name):"—"}</div><div class="kd">${list[0]?(list[0].left<=0?"due now":"in "+Math.round(list[0].left)+" h"):"&nbsp;"}</div></div>
+    <div><div class="eyebrow">Due now</div><div class="kv">${list.filter(x=>x.due).length}</div><div class="kd">maintenance tasks</div></div>
+    <div><div class="eyebrow">Next</div><div class="kv" style="font-size:16px;white-space:normal">${list[0]?esc(list[0].t.name):"—"}</div><div class="kd">${list[0]?(list[0].due?"due now":list[0].eta?"around "+dstr(list[0].eta):"in "+Math.round(list[0].left)+" h"):"&nbsp;"}</div></div>
   </div>
-  <section class="panel"><h2>Maintenance</h2>${list.length ? `<div class="list" style="gap:0">${list.map(({t, since, left}) => { const pct = Math.min(100, since/Math.max(1,n(t.every))*100), stt = left <= 0 ? "bad" : left < n(t.every)*0.15 ? "warn" : "good";
-    return `<div class="item" style="align-items:flex-start"><div style="min-width:0;flex:1"><div class="name">${esc(t.name)} <span class="pill ${stt}">${left<=0?"Due":stt==="warn"?"Soon":"OK"}</span></div><div class="meta">Every ${n(t.every)} h · ${Math.round(since)} h since last time${t.doneAt?" ("+fmtDate(String(t.doneAt).slice(0,10))+")":""}</div><div class="bar" style="margin-top:6px"><i style="width:${pct}%;background:var(--${stt==="good"?"accent":stt})"></i></div></div>
-      <div class="row" style="flex-wrap:nowrap;gap:6px;margin-left:12px"><button class="btn sm${left<=0?" primary":""}" data-mdone="${t.id}">Done</button><button class="btn sm ghost" data-medit="${t.id}">Edit</button></div></div>`; }).join("")}</div>` : `<p class="meta">No tasks.</p>`}</section>
+  <section class="panel"><div class="row" style="justify-content:space-between"><h2>Maintenance</h2>${list.length?`<button class="btn sm" data-act="remindAll">Add all to calendar</button>`:""}</div>
+    <p class="meta" style="margin-top:0">Reminders go to your phone's calendar with an alert at 9:00 on the day. Dates for hour-based tasks are estimated from your printing in the last 30 days (${Math.round(avgPrintHoursPerDay()*10)/10} h a day).</p>
+    ${list.length ? `<div class="list" style="gap:0">${list.map(({t, since, left, dsince, due, eta, inDays}) => { const pct = Math.min(100, Math.max(since/Math.max(1,n(t.every)), n(t.days) ? dsince/n(t.days) : 0)*100), stt = due ? "bad" : (inDays <= 3 || left < n(t.every)*0.15) ? "warn" : "good";
+    return `<div class="item" style="align-items:flex-start"><div style="min-width:0;flex:1"><div class="name">${esc(t.name)} <span class="pill ${stt}">${due?"Due":stt==="warn"?"Soon":"OK"}</span></div><div class="meta">Every ${n(t.every)} h${n(t.days)?` or ${n(t.days)} days`:""} · ${Math.round(since)} h since last time${t.doneAt?" ("+fmtDate(String(t.doneAt).slice(0,10))+")":""}${!due && eta ? " · next around "+dstr(eta) : ""}</div><div class="bar" style="margin-top:6px"><i style="width:${pct}%;background:var(--${stt==="good"?"accent":stt})"></i></div></div>
+      <div class="row" style="flex-wrap:nowrap;gap:6px;margin-left:12px"><button class="btn sm${due?" primary":""}" data-mdone="${t.id}">Done</button><button class="btn sm ghost" data-mremind="${t.id}" aria-label="Add reminder to calendar">Remind</button><button class="btn sm ghost" data-medit="${t.id}">Edit</button></div></div>`; }).join("")}</div>` : `<p class="meta">No tasks.</p>`}</section>
   <section class="panel" style="margin-top:20px"><h2>Hours before using the app</h2><p class="meta">If your printer had printing hours before you started logging here, add them so maintenance lines up. Bambu Handy shows the total under the printer's information.</p>
     <div class="row"><input id="ph_start" type="number" min="0" step="1" value="${n(S.settings.printerStartHours)||""}" placeholder="0" style="width:140px"><button class="btn" data-act="savePH">Save</button></div></section>`;
 }
@@ -1158,10 +1167,12 @@ function maintForm(t){
   modal(isNew ? "Add maintenance task" : "Edit task", `<div class="form">
     <label class="f full">Task<input id="mt_name" value="${esc(t.name)}" placeholder="e.g. Replace PTFE tube"></label>
     <label class="f">Every (printing hours)<input id="mt_every" type="number" min="1" value="${n(t.every)}"></label>
+    <label class="f">Or every (days)<input id="mt_days" type="number" min="0" value="${n(t.days)||""}" placeholder="optional"></label>
+    <p class="meta full">Whichever comes first. Use days for things that age with time, like cleaning the plate weekly.</p>
     ${(t.history||[]).length ? `<p class="meta full">Done on ${t.history.slice(0,5).map(d => fmtDate(String(d).slice(0,10))).join(", ")}</p>` : ""}
   </div><div class="foot">${isNew?"":`<button class="btn danger" id="mt_del" style="margin-right:auto">Delete</button>`}<button class="btn" data-x>Cancel</button><button class="btn primary" id="mt_save">Save</button></div>`, m => {
     m.querySelector("[data-x]").onclick = close;
-    $("#mt_save").onclick = () => { t.name = $("#mt_name").value.trim(); t.every = Math.max(1, n($("#mt_every").value)); if (!t.name) return toast("Name the task");
+    $("#mt_save").onclick = () => { t.name = $("#mt_name").value.trim(); t.every = Math.max(1, n($("#mt_every").value)); t.days = Math.max(0, Math.round(n($("#mt_days").value))); if (!t.name) return toast("Name the task");
       if (isNew) S.maint.push(t); else S.maint[S.maint.findIndex(x => x.id === t.id)] = t; persist("maint"); close(); render(); toast("Task saved"); };
     if (!isNew) $("#mt_del").onclick = () => { close(); trash("maint", S.maint.find(x => x.id === t.id)); render(); };
   });
@@ -1179,6 +1190,161 @@ function replaceTokenForm(){
       if (!ok){ SY.token = old; return toast("That token can't open " + SY.repo + ". Check it has access to that repository."); }
       SY.connectedAt = new Date().toISOString(); SY.error = ""; saveSY(); close(); showSync(); syncNow(true); render(); toast("Token replaced"); };
   });
+}
+
+/* ---------- capacity & production planning ---------- */
+const CAP_DEF = {printers:1, hours:16, days:[0,1,2,3,4,5,6], setup:10};
+const WEEKDAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+function cap(){ return Object.assign({}, CAP_DEF, S.settings.cap||{}); }
+const dayMinutes = () => Math.max(1, n(cap().printers)) * Math.max(0.5, n(cap().hours)) * 60;
+const perPlate = p => Math.max(1, Math.round(n(p && p.perPlate) || 1));
+const planFail = dev => (S.settings.failAllow === false || dev) ? 0 : failRate();
+/* printer minutes for qty pieces: print time with failure allowance, plus plate change time per plate */
+function jobMinutes(p, qty, dev){
+  if (!p || qty <= 0) return 0;
+  if (p.special) return n(p.minutes) * qty;
+  const plates = Math.ceil(qty / perPlate(p));
+  return qty * n(p.minutes) / (1 - planFail(dev)) + plates * n(cap().setup);
+}
+function piecesPerDay(p){ const per = n(p.minutes)/(1 - planFail(false)) + n(cap().setup)/perPlate(p); return per > 0 ? dayMinutes()/per : 0; }
+function profitPerHour(p){ const per = (n(p.minutes)/(1 - planFail(false)) + n(cap().setup)/perPlate(p))/60; return per > 0 ? (n(p.price) - unitCost(p))/per : 0; }
+/* walk working days from today; returns the date the given amount of printer time is used up */
+function dateAfter(minutes){
+  const days = cap().days.length ? cap().days : [0,1,2,3,4,5,6], per = dayMinutes(); let left = minutes, d = new Date(); d.setHours(12,0,0,0);
+  for (let i = 0; i < 3650; i++){ if (days.includes(d.getDay())){ if (left <= per) return d; left -= per; } d.setDate(d.getDate()+1); }
+  return d;
+}
+const dstr = d => d.toLocaleDateString("en-GB",{weekday:"short", day:"numeric", month:"short"});
+function workingDaysFor(minutes){ return minutes / dayMinutes(); }
+function jobTarget(j){ return printTarget(j.target); }
+const jobLeft = j => Math.max(0, n(j.qty) - n(j.done));
+function jobMin(j){ const t = jobTarget(j); return t ? jobMinutes(t, jobLeft(j), j.purpose === "dev") : 0; }
+function openJobs(){ return S.plan.filter(j => j.status !== "done" && jobLeft(j) > 0 && jobTarget(j)).sort((a,b) => n(a.sort) - n(b.sort)); }
+function schedule(){ let acc = 0; return openJobs().map(j => { const m = jobMin(j), start = dateAfter(acc + 1); acc += m; return {j, m, start, end:dateAfter(acc), lateBy: j.due && acc ? (dateAfter(acc) > new Date(j.due+"T23:59:59")) : false}; }); }
+function plannedQty(pid, purpose){ return openJobs().filter(j => j.target === pid && (j.purpose||"prod") === purpose).reduce((a,j)=>a+jobLeft(j),0); }
+function planSuggestions(){
+  recompute(); const out = [];
+  S.products.forEach(p => { const short = reserved(p.id) - n(p.stock) - plannedQty(p.id, "prod"); if (short > 0) out.push({target:p.id, qty:short, purpose:"prod", why:`Open orders need ${short} more`}); });
+  restockPlan().forEach(x => { const left = x.need - plannedQty(x.p.id, "prod") - Math.max(0, reserved(x.p.id) - n(x.p.stock)); if (left > 0) out.push({target:x.p.id, qty:left, purpose:"prod", why:`Below minimum stock (${n(x.p.min)})`}); });
+  S.orders.filter(o => isSpecial(o) && !["delivered","cancelled"].includes(o.status) && !specialPrints(o).length && !S.plan.some(j => j.target === "order:"+o.id && j.status !== "done"))
+    .forEach(o => out.push({target:"order:"+o.id, qty:1, purpose:"prod", why:`Special order${o.due?" due "+fmtDate(o.due):""}`, due:o.due}));
+  return out;
+}
+function addJob(j){ const maxSort = S.plan.reduce((a,x)=>Math.max(a, n(x.sort)), 0); S.plan.push(Object.assign({id:uid(), qty:1, done:0, purpose:"prod", note:"", due:"", status:"open", created:today(), sort:maxSort+1}, j)); }
+function filamentNeeds(lines){ const need = {}; lines.forEach(({t, qty}) => { if (!t) return; const ug = t.special ? (t.materials||[]).map(m => ({spoolId:m.spoolId, grams:n(m.grams)})) : unitGrams(t); ug.forEach(g0 => need[g0.spoolId] = (need[g0.spoolId]||0) + g0.grams*qty); }); return need; }
+function needsHTML(need){
+  const rows = Object.entries(need).filter(([,gr]) => gr > 0).map(([id, gr]) => { const sp = spool(id), short = !sp || n(sp.remaining) < gr;
+    return `<div class="vrow"><span class="row" style="gap:8px;min-width:0"><span class="sw" style="background:${hex(sp?.color)}"></span>${esc(sp?.name.trim()||"Deleted spool")}</span><span class="num" style="${short?"color:var(--bad);font-weight:600":""}">${g(gr)} g / ${g(sp?.remaining)} g${short?" · buy "+g(gr-n(sp?.remaining))+" g":""}</span></div>`; });
+  return rows.join("") || `<p class="meta">No filament needed.</p>`;
+}
+const targetOptions = sel => `${S.products.filter(p => stageOf(p) !== "retired").map(p => `<option value="${p.id}" ${p.id===sel?"selected":""}>${esc(p.name)} · ${esc(p.type)}</option>`).join("")}${S.orders.filter(o => isSpecial(o) && !["delivered","cancelled"].includes(o.status)).map(o => `<option value="order:${o.id}" ${"order:"+o.id===sel?"selected":""}>Special · ${esc(o.customer||"")} · ${esc((o.custom?.desc||"").slice(0,30))}</option>`).join("")}`;
+const targetName = t => t ? (t.special ? `<span class="pill neutral">Special</span> ${esc(t.special.customer||"")}` : esc(t.name)) : "Deleted";
+const targetSub = t => t ? esc(t.special ? (t.special.custom?.desc||"").slice(0,50) : t.type) : "";
+
+function vPlan(){
+  const tab = filter.pt || "queue", sch = schedule(), total = sch.reduce((a,x)=>a+x.m,0), c = cap();
+  const head0 = head("Planning", "Your production queue, what you can make per day, and how long new orders will take.", `<div class="tabs">${[["queue","Queue"],["calc","Order calculator"],["capacity","Capacity"]].map(([k,l])=>`<button data-pt="${k}" aria-pressed="${tab===k}">${l}</button>`).join("")}</div><button class="btn primary" data-act="newJob">Add job</button>`);
+  const strip = `<div class="strip">
+    <div><div class="eyebrow">Printer time per day</div><div class="kv">${Math.round(dayMinutes()/60*10)/10}<small>h</small></div><div class="kd">${n(c.printers)} printer${n(c.printers)>1?"s":""} · ${c.days.length} days a week</div></div>
+    <div><div class="eyebrow">Queued</div><div class="kv">${hrs(total)}</div><div class="kd">${sch.length} job${sch.length===1?"":"s"} · ${Math.round(workingDaysFor(total)*10)/10} working days</div></div>
+    <div><div class="eyebrow">Queue done by</div><div class="kv" style="font-size:18px">${sch.length?dstr(dateAfter(total)):"—"}</div><div class="kd">${sch.some(x=>x.lateBy)?`<span style="color:var(--bad)">${sch.filter(x=>x.lateBy).length} job(s) late for their due date</span>`:"if you keep printing"}</div></div>
+    <div><div class="eyebrow">Free from</div><div class="kv" style="font-size:18px">${dstr(dateAfter(total + 1))}</div><div class="kd">first day with spare capacity</div></div>
+  </div>`;
+  if (tab === "calc") return head0 + strip + vPlanCalc();
+  if (tab === "capacity") return head0 + strip + vPlanCapacity();
+  const sug = planSuggestions(), need = filamentNeeds(openJobs().map(j => ({t:jobTarget(j), qty:jobLeft(j)})));
+  return head0 + strip + `<div class="grid2">
+    <section class="panel"><h2>Production queue</h2>${sch.length ? `<div class="list" style="gap:0">${sch.map(({j, m, start, end, lateBy}, i) => { const t = jobTarget(j);
+      return `<div class="item" style="align-items:flex-start"><div style="min-width:0;flex:1"><div class="name">${i+1}. ${targetName(t)} × ${jobLeft(j)}${n(j.done)?` <span class="meta">(${n(j.done)} of ${n(j.qty)} done)</span>`:""} ${j.purpose==="dev"?`<span class="pill accent">Development</span>`:""}${lateBy?` <span class="pill bad">Late</span>`:""}</div>
+        <div class="meta">${targetSub(t)}${j.note?" · "+esc(j.note):""}</div><div class="meta">${hrs(m)} · ${dstr(start)} → ${dstr(end)}${j.due?" · due "+fmtDate(j.due):""}</div></div>
+        <div class="row" style="flex-wrap:nowrap;gap:4px;margin-left:8px"><button class="btn sm ghost" data-jup="${j.id}" ${i===0?"disabled":""} aria-label="Move up">↑</button><button class="btn sm ghost" data-jdown="${j.id}" ${i===sch.length-1?"disabled":""} aria-label="Move down">↓</button><button class="btn sm" data-jprint="${j.id}">Print</button><button class="btn sm ghost" data-jedit="${j.id}">Edit</button></div></div>`; }).join("")}</div>` : `<div class="empty">Nothing planned. Add a job, or use the suggestions.</div>`}
+      ${S.plan.some(j => j.status === "done") ? `<button class="btn sm ghost" data-act="clearDone" style="margin-top:8px">Clear ${S.plan.filter(j=>j.status==="done").length} finished job(s)</button>` : ""}</section>
+    <div class="list" style="gap:20px">
+      <section class="panel"><div class="row" style="justify-content:space-between"><h2>Suggested</h2>${sug.length>1?`<button class="btn sm" data-act="addAllSug">Add all</button>`:""}</div>${sug.length ? `<div class="list" style="gap:0">${sug.map((x,i) => { const t = printTarget(x.target); return `<div class="item"><div style="min-width:0"><div class="name">${targetName(t)} × ${x.qty}</div><div class="meta">${esc(x.why)} · ${hrs(jobMinutes(t, x.qty, false))}</div></div><button class="btn sm" data-sug="${i}">Add</button></div>`; }).join("")}</div>` : `<p class="meta">Nothing needed right now. Orders and stock are covered by your queue.</p>`}</section>
+      <section class="panel"><h2>Filament for the queue</h2>${needsHTML(need)}</section>
+    </div></div>`;
+}
+function calcLines(){ return (filter.calc && filter.calc.length) ? filter.calc : (filter.calc = [{target:S.products.find(p=>isSelling(p))?.id || S.products[0]?.id || "", qty:10}]); }
+function vPlanCalc(){
+  const lines = calcLines(), after = filter.calcAfter !== false, queue = schedule().reduce((a,x)=>a+x.m,0);
+  const rows = lines.map(l => ({...l, t:printTarget(l.target)})).filter(l => l.t && n(l.qty) > 0);
+  const mins = rows.reduce((a,l)=>a+jobMinutes(l.t, n(l.qty), false),0), plates = rows.reduce((a,l)=>a+(l.t.special?n(l.qty):Math.ceil(n(l.qty)/perPlate(l.t))),0);
+  const cost = rows.reduce((a,l)=>a+(l.t.special ? specialEstimate(l.t.special) : unitCost(l.t))*n(l.qty),0), rev = rows.reduce((a,l)=>a+(l.t.special ? n(l.t.special.custom?.price) : n(l.t.price))*n(l.qty),0);
+  const fromStock = rows.reduce((a,l)=>a+(l.t.special?0:Math.min(n(l.qty), Math.max(0, available(l.t)))),0);
+  const start = after ? queue : 0, end = dateAfter(start + mins);
+  return `<div class="grid2"><section class="panel"><h2>Incoming order</h2><p class="meta" style="margin-top:0">Add what the customer wants. Nothing is saved until you create the order or add it to the queue.</p>
+    <div class="list" style="gap:8px">${lines.map((l,i) => `<div class="mat" style="grid-template-columns:minmax(0,1fr) 84px auto"><select data-cl="${i}" aria-label="Product">${targetOptions(l.target)}</select><input data-cq="${i}" type="number" min="1" value="${n(l.qty)}" aria-label="Quantity"><button class="btn sm ghost" data-cdel="${i}" aria-label="Remove" type="button">✕</button></div>`).join("")}</div>
+    <div class="row" style="margin-top:8px"><button class="btn sm" data-act="calcAdd">Add product</button></div>
+    <label class="check" style="margin-top:12px"><input id="calc_after" type="checkbox" ${after?"checked":""}> Start after the current queue (${hrs(queue)})</label>
+    <div class="row" style="margin-top:14px"><button class="btn primary" data-act="calcOrder">Create order</button><button class="btn" data-act="calcPlan">Add to queue</button></div></section>
+    <div class="list" style="gap:20px"><section class="panel"><h2>What it takes</h2>
+      <div class="vgrid" style="margin-top:0">
+        <div><span class="meta">Printer time</span><b>${hrs(mins)}</b><span class="meta">${plates} plate${plates===1?"":"s"}</span></div>
+        <div><span class="meta">Working days</span><b>${Math.round(workingDaysFor(mins)*10)/10}</b><span class="meta">at ${Math.round(dayMinutes()/60)} h/day</span></div>
+        <div><span class="meta">Ready by</span><b style="font-size:15px">${rows.length?dstr(end):"—"}</b><span class="meta">${after&&queue?"after the queue":"starting today"}</span></div>
+        <div><span class="meta">Revenue</span><b>${money(rev)}</b></div>
+        <div><span class="meta">Cost</span><b>${money(cost)}</b></div>
+        <div><span class="meta">Profit</span><b style="color:var(--${rev-cost>=0?"good":"bad"})">${money(rev-cost)}</b></div>
+      </div>
+      ${fromStock?`<p class="meta">${fromStock} piece${fromStock===1?"":"s"} could come from stock you already have, which would make it faster. The time above assumes you print everything.</p>`:""}
+      <p class="meta" style="margin:0">Includes plate changes (${n(cap().setup)} min each) and your ${Math.round(planFail(false)*100)}% failure allowance.</p></section>
+      <section class="panel"><h2>Filament needed</h2>${needsHTML(filamentNeeds(rows.map(l => ({t:l.t, qty:n(l.qty)}))))}</section></div></div>`;
+}
+function vPlanCapacity(){
+  const c = cap(), list = S.products.filter(p => stageOf(p) !== "retired").map(p => ({p, day:piecesPerDay(p), pph:profitPerHour(p)})).sort((a,b) => b.pph - a.pph);
+  return `<div class="grid2"><section class="panel"><h2>Daily capacity per product</h2><p class="meta" style="margin-top:0">If the printer only made this product. Sorted by profit per printing hour, so the top ones earn the most from your printer's time.</p>
+    <div class="tablewrap" style="border:0"><table><thead><tr><th>Product</th><th class="r">Per plate</th><th class="r">Per day</th><th class="r">Per week</th><th class="r">Profit / day</th><th class="r">Profit / hour</th></tr></thead><tbody>
+    ${list.map(({p, day, pph}) => `<tr><td>${pname(p)}</td><td class="r num">${perPlate(p)}</td><td class="r num">${Math.floor(day)}</td><td class="r num">${Math.floor(day*c.days.length)}</td><td class="r num">${money(Math.floor(day)*(n(p.price)-unitCost(p)))}</td><td class="r"><span class="pill ${pph>=10?"good":pph>=4?"warn":"bad"}">${money(pph)}</span></td></tr>`).join("")}</tbody></table></div></section>
+    <section class="panel ro-lock"><h2>Your capacity</h2><div class="form">
+      <label class="f">Printers<input id="cp_pr" type="number" min="1" value="${n(c.printers)}"></label>
+      <label class="f">Printing hours per day<input id="cp_h" type="number" min="1" max="24" step="0.5" value="${n(c.hours)}"></label>
+      <label class="f">Plate change per plate (min)<input id="cp_s" type="number" min="0" value="${n(c.setup)}"></label>
+      <div class="f full"><span>Working days</span><div class="chips">${WEEKDAYS.map((d,i)=>`<button type="button" data-wd="${i}" aria-pressed="${c.days.includes(i)}">${d}</button>`).join("")}</div></div>
+      <p class="meta full">Printing hours per day is how long the printer can run, including overnight if you leave it. Plate change covers removing the print, cleaning and starting the next one. Pieces per plate is set on each product (Edit, or filled from a Bambu file).</p>
+    </div><div class="foot"><button class="btn primary" data-act="saveCap">Save capacity</button></div></section></div>`;
+}
+function jobForm(j, preset){
+  const isNew = !j; j = j ? {...j} : Object.assign({id:uid(), target:S.products.find(p=>isSelling(p))?.id || S.products[0]?.id || "", qty:1, done:0, purpose:"prod", note:"", due:"", status:"open", created:today()}, preset||{});
+  modal(isNew ? "Add job" : "Edit job", `<div class="form">
+    <label class="f full">What to print<select id="jb_t">${targetOptions(j.target)}</select></label>
+    <label class="f">Quantity<input id="jb_q" type="number" min="1" value="${n(j.qty)}"></label>
+    <label class="f">Due date<input id="jb_d" type="date" value="${esc(j.due||"")}"></label>
+    <div class="f full"><span>Purpose</span><div class="seg" style="grid-template-columns:repeat(2,minmax(0,1fr))"><label class="ok"><input type="radio" name="jb_p" value="prod" ${j.purpose!=="dev"?"checked":""}>Production<small>to stock or orders</small></label><label><input type="radio" name="jb_p" value="dev" ${j.purpose==="dev"?"checked":""}>Development<small>test prints</small></label></div></div>
+    <label class="f full">Note<input id="jb_n" value="${esc(j.note)}" placeholder="e.g. try 0.16 mm layers, new colours"></label>
+    ${!isNew && n(j.done) ? `<label class="f">Already done<input id="jb_done" type="number" min="0" value="${n(j.done)}"></label>` : ""}
+    <p class="meta full" id="jb_info"></p>
+  </div><div class="foot">${isNew?"":`<button class="btn danger" id="jb_del" style="margin-right:auto">Delete</button>`}<button class="btn" data-x>Cancel</button><button class="btn primary" id="jb_save">Save</button></div>`, m => {
+    const info = () => { const t = printTarget($("#jb_t").value), q = n($("#jb_q").value), dev = (m.querySelector('input[name="jb_p"]:checked')||{}).value === "dev"; $("#jb_info").textContent = t ? `${hrs(jobMinutes(t, q, dev))} of printer time` : ""; };
+    m.addEventListener("input", info); m.addEventListener("change", info); info();
+    m.querySelector("[data-x]").onclick = close;
+    $("#jb_save").onclick = () => { Object.assign(j, {target:$("#jb_t").value, qty:Math.max(1, Math.round(n($("#jb_q").value))), due:$("#jb_d").value, note:$("#jb_n").value.trim(), purpose:(m.querySelector('input[name="jb_p"]:checked')||{}).value||"prod"});
+      const dn = $("#jb_done"); if (dn) j.done = Math.max(0, Math.round(n(dn.value))); j.status = jobLeft(j) > 0 ? "open" : "done";
+      if (isNew) addJob(j); else S.plan[S.plan.findIndex(x => x.id === j.id)] = j; persist("plan"); close(); render(); toast(isNew ? "Added to the queue" : "Job saved"); };
+    if (!isNew) $("#jb_del").onclick = () => { close(); trash("plan", S.plan.find(x => x.id === j.id)); render(); };
+  });
+}
+
+/* ---------- maintenance reminders ---------- */
+function avgPrintHoursPerDay(){ const since = new Date(Date.now() - 30*864e5).toISOString().slice(0,10); const h = S.prints.filter(pr => String(pr.date) >= since).reduce((a,pr)=>a+n(pr.minutes),0)/60; return h/30; }
+function icsFor(tasks){
+  const pad = x => String(x).padStart(2,"0"), ds = d => d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate()), stamp = new Date().toISOString().replace(/[-:]/g,"").replace(/\.\d+/,"");
+  const esc2 = s => String(s).replace(/[\\,;]/g, m => "\\"+m).replace(/\n/g,"\\n");
+  const ev = tasks.map(({t, eta}) => { const d = eta || new Date(); const e = new Date(d); e.setDate(e.getDate()+1);
+    return ["BEGIN:VEVENT", `UID:${t.id}-${ds(d)}@wav-app`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${ds(d)}`, `DTEND;VALUE=DATE:${ds(e)}`, `SUMMARY:${esc2("WAV printer: " + t.name)}`,
+      `DESCRIPTION:${esc2(n(t.days) ? `Every ${n(t.days)} days or ${n(t.every)} printing hours. Mark it done in the WAV app.` : `Every ${n(t.every)} printing hours. The date is estimated from your recent printing. After you mark it done in the WAV app, add the new reminder.`)}`,
+      ...(n(t.days) ? [`RRULE:FREQ=DAILY;INTERVAL=${Math.round(n(t.days))}`] : []),
+      "BEGIN:VALARM", "TRIGGER:PT9H", "ACTION:DISPLAY", `DESCRIPTION:${esc2("WAV printer: " + t.name)}`, "END:VALARM", "END:VEVENT"].join("\r\n"); });
+  return ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//WAV//Print Studio//EN","CALSCALE:GREGORIAN", ...ev, "END:VCALENDAR"].join("\r\n");
+}
+function remindCalendar(list){
+  const blob = new Blob([icsFor(list)], {type:"text/calendar"}), name = list.length === 1 ? "wav-" + list[0].t.name.toLowerCase().replace(/[^a-z0-9]+/g,"-").slice(0,30) + ".ics" : "wav-printer-maintenance.ics";
+  try{ const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+    toast("Opening your calendar… choose Add to add the reminder"); }catch(e){ handOver(blob, name, "Reminder"); }
+}
+function updateBadge(){
+  try{ if (!("setAppBadge" in navigator)) return;
+    const c = (S.maint.length ? maintDue().filter(x => x.due).length : 0) + S.orders.filter(o => !["delivered","cancelled"].includes(o.status) && o.due && o.due < today()).length;
+    c ? navigator.setAppBadge(c).catch(()=>{}) : navigator.clearAppBadge().catch(()=>{}); }catch(e){}
 }
 
 function vReports(){
@@ -1335,11 +1501,12 @@ function productForm(p){
     <label class="f">Sale price (${cur()})<input id="p_price" type="number" step="0.01" value="${n(p.price)}"></label>
     <label class="f">Minimum stock<input id="p_minst" type="number" value="${n(p.min)}"></label>
     <label class="f">In stock<input id="p_stock" type="number" value="${n(p.stock)}"></label>
+    <label class="f">Pieces per plate<input id="p_plate" type="number" min="1" value="${perPlate(p)}"><span style="font-weight:400">How many you print together</span></label>
     <label class="f full">AMS colour-change waste per unit (g)<input id="p_flush" type="number" step="0.1" min="0" value="${n(p.flush)}"><span style="font-weight:400">From Bambu Studio's filament summary: "Flushed" grams ÷ units on the plate. Single-colour prints: 0.</span></label>
     <label class="f check" style="align-self:end"><input id="p_nfc" type="checkbox" ${p.nfc?"checked":""}> Has NFC chip</label>
     <div class="full calc" id="pcalc"></div>
   </div><div class="foot">${isNew?"":`<button class="btn danger" id="pdel" style="margin-right:auto">Delete</button>`}<button class="btn" data-x>Cancel</button><button class="btn primary" id="psave">Save</button></div>`, m => {
-    const read = () => { p.materials = [...m.querySelectorAll("[data-mi]")].map(r=>({spoolId:r.querySelector("[data-mspool]").value, grams:n(r.querySelector("[data-mg]").value)})); Object.assign(p,{name:$("#p_name").value.trim(), type:$("#p_type").value.trim(), minutes:n($("#p_min").value), extras:n($("#p_ext").value), price:n($("#p_price").value), min:n($("#p_minst").value), stock:n($("#p_stock").value), flush:n($("#p_flush").value), nfc:$("#p_nfc").checked, stage:(m.querySelector('input[name="p_stage"]:checked')||{}).value||"prod"}); p.category = ["idea","dev"].includes(p.stage) ? "prototype" : "final"; p.grams = Math.round(p.materials.reduce((a,x)=>a+x.grams,0)*100)/100; };
+    const read = () => { p.materials = [...m.querySelectorAll("[data-mi]")].map(r=>({spoolId:r.querySelector("[data-mspool]").value, grams:n(r.querySelector("[data-mg]").value)})); Object.assign(p,{name:$("#p_name").value.trim(), type:$("#p_type").value.trim(), minutes:n($("#p_min").value), extras:n($("#p_ext").value), price:n($("#p_price").value), min:n($("#p_minst").value), stock:n($("#p_stock").value), flush:n($("#p_flush").value), perPlate:Math.max(1, Math.round(n($("#p_plate").value)||1)), nfc:$("#p_nfc").checked, stage:(m.querySelector('input[name="p_stage"]:checked')||{}).value||"prod"}); p.category = ["idea","dev"].includes(p.stage) ? "prototype" : "final"; p.grams = Math.round(p.materials.reduce((a,x)=>a+x.grams,0)*100)/100; };
     const calc = () => { read(); const k=costParts(p), c=k.total, pr=n(p.price)-c; $("#pcalc").innerHTML = `<div>Filament<b>${money(k.fil)}</b></div><div>Colour-change waste<b>${money(k.flush)}</b></div><div>Printer time<b>${money(k.time)}</b></div><div>Failure allowance<b>${money(k.fail)}</b><small>${Math.round(k.fr*100)}% fail rate</small></div>${k.extras?`<div>Extras<b>${money(k.extras)}</b></div>`:""}<div>Unit cost<b>${money(c)}</b></div><div>Profit<b style="color:var(--${pr>=0?"good":"bad"})">${money(pr)}</b></div><div>Suggested price<b>${suggestPrice(c)?money(suggestPrice(c)):"—"}</b><button class="btn sm ghost" type="button" id="useSug" style="padding:0;margin-top:2px">Use it</button></div>`; const u=$("#useSug"); if (u) u.onclick = () => { $("#p_price").value = suggestPrice(c); calc(); }; };
     const wire = () => m.querySelectorAll("[data-mdel]").forEach(b => b.onclick = () => { b.closest("[data-mi]").remove(); calc(); });
     m.addEventListener("input", calc); m.addEventListener("change", calc); wire(); calc();
@@ -1349,7 +1516,7 @@ function productForm(p){
       const per = {}; if (mode === "add") curRecipe().forEach(x => { per[x.spoolId] = (per[x.spoolId]||0) + x.grams; });
       r.items.forEach(it => { per[it.spoolId] = (per[it.spoolId]||0) + it.grams/r.units; });
       $("#mats").innerHTML = Object.entries(per).map(([spoolId, gr], i) => matRow({spoolId, grams:Math.round(gr*100)/100}, i)).join(""); wire();
-      const addMin = r.seconds/60/r.units; setDur("p_min", mode === "add" ? n($("#p_min").value) + addMin : addMin); $("#p_flush").value = 0;
+      const addMin = r.seconds/60/r.units; setDur("p_min", mode === "add" ? n($("#p_min").value) + addMin : addMin); if (mode !== "add") $("#p_plate").value = r.units; $("#p_flush").value = 0;
       calc(); toast(mode === "add" ? `Added ${r.name} to the recipe (per piece, ${r.units} on its plate).` : `Recipe set per piece from ${r.units} on the plate. Colour-change waste is already included.`);
     }});
     m.querySelector("[data-x]").onclick = close;
@@ -1664,7 +1831,8 @@ function wireDrop(el, handler){
 
 function specialTarget(o){ const c = o.custom||{}; return {id:"order:"+o.id, name:"Special · "+(o.customer||"order"), type:c.desc||"", materials:(c.est||[]).map(e => ({spoolId:e.spoolId, grams:e.grams})), flush:0, minutes:n(c.estMin), extras:0, stock:null, special:o}; }
 function printTarget(v){ if (String(v).startsWith("order:")){ const o = S.orders.find(x => x.id === v.slice(6)); return o ? specialTarget(o) : null; } return product(v); }
-function printForm(pid, qty0){
+function printForm(pid, qty0, opts){
+  opts = opts || {};
   const openSpecial = S.orders.filter(o => isSpecial(o) && !["delivered","cancelled"].includes(o.status));
   if (!S.products.length && !openSpecial.length){ toast("Add a product or a special order first"); return; }
   let p = printTarget(pid) || S.products[0] || specialTarget(openSpecial[0]);
@@ -1686,7 +1854,7 @@ function printForm(pid, qty0){
     let purposeFor = null;
     const setPurpose = () => { if (purposeFor === p.id) return; purposeFor = p.id; const box = $("#r_purpose"), st = p.special ? "special" : stageOf(p);
       box.hidden = st === "special" || st === "prod" || st === "retired";
-      const want = ["idea","dev"].includes(st) ? "dev" : "prod"; const r0 = m.querySelector(`input[name="purpose"][value="${want}"]`); if (r0) r0.checked = true; };
+      const want = opts.purpose && st !== "special" && st !== "prod" && st !== "retired" ? opts.purpose : ["idea","dev"].includes(st) ? "dev" : "prod"; const r0 = m.querySelector(`input[name="purpose"][value="${want}"]`); if (r0) r0.checked = true; };
     const fill = () => { p = printTarget($("#r_p").value); setPurpose(); const q = n($("#r_qty").value)||1; setDur("r_min", n(p.minutes)*q);
       const rows = usageRows(p,q).filter(u=>u.grams>0); const used = new Set(rows.map(r=>r.id));
       $("#r_use").innerHTML = rows.map(u=>useRow(u)).join("") + `<details><summary class="meta" style="cursor:pointer">Other spools</summary><div class="list" style="gap:6px;margin-top:6px">${S.spools.filter(s=>!used.has(s.id)).map(s=>useRow({id:s.id,grams:0})).join("")}</div></details>`; calc(); };
@@ -1713,7 +1881,8 @@ function printForm(pid, qty0){
       syncResult(m); calc(); toast("Filled from " + r.name);
     }});
     m.querySelector("[data-x]").onclick = close;
-    $("#rsave").onclick = () => { try{ const r = read(); logPrint(r); close(); render(); toast(r.dev ? "Development test print logged" : r.goodQty>=r.qty ? "Print logged · stock +"+r.goodQty : r.goodQty>0 ? `Logged · ${r.goodQty} good, ${r.qty-r.goodQty} wasted` : "Failed print logged as waste"); }catch(e){ console.error(e); toast("Couldn't save the print: "+(e.message||e)); } };
+    $("#rsave").onclick = () => { try{ const r = read(); logPrint(r);
+      if (opts.job){ const j = S.plan.find(x => x.id === opts.job); if (j){ j.done = n(j.done) + (r.dev || j.purpose === "dev" ? r.qty : r.goodQty); if (jobLeft(j) <= 0) j.status = "done"; persist("plan"); } } close(); render(); toast(r.dev ? "Development test print logged" : r.goodQty>=r.qty ? "Print logged · stock +"+r.goodQty : r.goodQty>0 ? `Logged · ${r.goodQty} good, ${r.qty-r.goodQty} wasted` : "Failed print logged as waste"); }catch(e){ console.error(e); toast("Couldn't save the print: "+(e.message||e)); } };
   });
 }
 
@@ -1789,8 +1958,10 @@ function adjustForm(s){
   });
 }
 
-function orderForm(o){
+function orderForm(o, preset){
   const isNew = !o; o = o ? JSON.parse(JSON.stringify(o)) : {id:uid(), customer:"", contact:"", channel:S.settings.lastChannel||CHANNELS[0], paid:false, due:"", status:"new", discount:0, shipCharge:0, shipCost:0, notes:"", items:S.products.length?[{product:S.products[0].id, qty:1, price:n(S.products[0].price)}]:[], created:today(), kind:S.products.length?"products":"special"};
+  if (preset && preset.items && !preset.items.length) preset = null;
+  if (preset && preset.items){ o.items = preset.items; o.kind = "products"; }
   if (!o.custom) o.custom = {desc:"", price:0, deposit:0, est:[], estMin:0, photo:null};
   const estRow = (e,i) => `<div class="mat" data-ei="${i}"><select data-espool aria-label="Spool">${spoolOptions(e.spoolId)}</select><input data-eg type="number" step="0.01" min="0" value="${n(e.grams)}" aria-label="Grams"><button class="btn sm ghost" data-edel type="button" aria-label="Remove">✕</button></div>`;
   const itemRow = (it,i) => `<div class="mat" data-oi="${i}" style="grid-template-columns:minmax(0,1fr) 70px 90px auto"><select data-op aria-label="Product">${S.products.map(p=>`<option value="${p.id}" ${p.id===it.product?"selected":""}>${esc(p.name)} · ${esc(p.type)}</option>`).join("")}</select><input data-oq type="number" min="1" value="${n(it.qty)}" aria-label="Quantity"><input data-opr type="number" step="0.01" value="${n(it.price)}" aria-label="Unit price"><button class="btn sm ghost" data-odel aria-label="Remove">✕</button></div>`;
@@ -1920,6 +2091,13 @@ function bind(){
   M.querySelectorAll("[data-act]").forEach(b => b.onclick = () => ({
     newExpense:()=>expenseForm(), newProduct:()=>productForm(), newPrint:()=>printForm(), newSpool:()=>spoolForm(), newOrder:()=>orderForm(),
     import:importFile, export:exportFile,
+    newJob:()=>jobForm(), clearDone:()=>{ S.plan = S.plan.filter(j => j.status !== "done"); persist("plan"); render(); },
+    addAllSug:()=>{ planSuggestions().forEach(x => addJob({target:x.target, qty:x.qty, purpose:x.purpose, due:x.due||"", note:x.why})); persist("plan"); render(); toast("Suggestions added to the queue"); },
+    calcAdd:()=>{ calcLines().push({target:S.products.find(p=>isSelling(p))?.id || S.products[0]?.id, qty:1}); render(); },
+    calcOrder:()=>{ const items = calcLines().filter(l => !String(l.target).startsWith("order:") && product(l.target)).map(l => ({product:l.target, qty:n(l.qty), price:n(product(l.target).price)})); if (!items.length) return toast("Add at least one product"); orderForm(null, {items}); },
+    calcPlan:()=>{ calcLines().forEach(l => { if (printTarget(l.target)) addJob({target:l.target, qty:n(l.qty), purpose:"prod"}); }); persist("plan"); filter.pt = "queue"; render(); toast("Added to the queue"); },
+    saveCap:()=>{ S.settings.cap = {printers:Math.max(1, Math.round(n($("#cp_pr").value))), hours:Math.min(24, Math.max(0.5, n($("#cp_h").value))), setup:Math.max(0, n($("#cp_s").value)), days:[...document.querySelectorAll("[data-wd]")].filter(b => b.getAttribute("aria-pressed") === "true").map(b => +b.dataset.wd)}; if (!S.settings.cap.days.length) S.settings.cap.days = [0,1,2,3,4,5,6]; persist("settings"); render(); toast("Capacity saved"); },
+    remindAll:()=>remindCalendar(maintDue().map(x => ({t:x.t, eta: x.due ? new Date() : x.eta}))),
     syncNow:()=>syncNow(true), shareView:shareInviteForm, history:historyForm, replaceToken:replaceTokenForm,
     excel:()=>exportExcel(filter.rp || "all"), excelAll:()=>exportExcel("all"), newMaint:()=>maintForm(),
     savePH:()=>{ const nv = Math.max(0, n($("#ph_start").value)), d = nv - n(S.settings.printerStartHours); S.settings.printerStartHours = nv;
@@ -1939,6 +2117,18 @@ function bind(){
   M.querySelectorAll("[data-adjp]").forEach(b => b.onclick = () => adjustStockForm(product(b.dataset.adjp)));
   M.querySelectorAll("[data-sell]").forEach(b => b.onclick = () => sellForm(product(b.dataset.sell)));
   M.querySelectorAll("[data-ep]").forEach(b => b.onclick = () => { filter.ep = b.dataset.ep; render(); });
+  M.querySelectorAll("[data-pt]").forEach(b => b.onclick = () => { filter.pt = b.dataset.pt; render(); });
+  M.querySelectorAll("[data-jup],[data-jdown]").forEach(b => b.onclick = () => { const id = b.dataset.jup || b.dataset.jdown, list = openJobs(), i = list.findIndex(j => j.id === id), k = b.dataset.jup ? i-1 : i+1; if (k < 0 || k >= list.length) return;
+    const a = list[i], c2 = list[k], t0 = a.sort; a.sort = c2.sort; c2.sort = t0; if (a.sort === c2.sort) a.sort += b.dataset.jup ? -0.5 : 0.5; persist("plan"); render(); });
+  M.querySelectorAll("[data-jprint]").forEach(b => b.onclick = () => { const j = S.plan.find(x => x.id === b.dataset.jprint), t = jobTarget(j); const q = t && !t.special ? Math.min(jobLeft(j), perPlate(t)) : 1; printForm(j.target, q, {job:j.id, purpose:j.purpose}); });
+  M.querySelectorAll("[data-jedit]").forEach(b => b.onclick = () => jobForm(S.plan.find(x => x.id === b.dataset.jedit)));
+  M.querySelectorAll("[data-sug]").forEach(b => b.onclick = () => { const x = planSuggestions()[+b.dataset.sug]; if (!x) return; addJob({target:x.target, qty:x.qty, purpose:x.purpose, due:x.due||"", note:x.why}); persist("plan"); render(); toast("Added to the queue"); });
+  M.querySelectorAll("[data-cl]").forEach(sel => sel.onchange = () => { calcLines()[+sel.dataset.cl].target = sel.value; render(); });
+  M.querySelectorAll("[data-cq]").forEach(inp => inp.onchange = () => { calcLines()[+inp.dataset.cq].qty = Math.max(1, Math.round(n(inp.value))); render(); });
+  M.querySelectorAll("[data-cdel]").forEach(b => b.onclick = () => { const l = calcLines(); l.splice(+b.dataset.cdel, 1); if (!l.length) filter.calc = null; render(); });
+  const ca = $("#calc_after"); if (ca) ca.onchange = () => { filter.calcAfter = ca.checked; render(); };
+  M.querySelectorAll("[data-wd]").forEach(b => b.onclick = () => b.setAttribute("aria-pressed", b.getAttribute("aria-pressed") !== "true"));
+  M.querySelectorAll("[data-mremind]").forEach(b => b.onclick = () => { const x = maintDue().find(y => y.t.id === b.dataset.mremind); remindCalendar([{t:x.t, eta: x.due ? new Date() : x.eta}]); });
   M.querySelectorAll("[data-inv]").forEach(b => b.onclick = () => invoiceForm(S.orders.find(o => o.id === b.dataset.inv)));
   M.querySelectorAll("[data-mdone]").forEach(b => b.onclick = () => { const t = S.maint.find(x => x.id === b.dataset.mdone); t.doneHours = printerHours(); t.doneAt = new Date().toISOString(); t.history = [t.doneAt, ...(t.history||[])].slice(0,20); persist("maint"); render(); toast(`"${t.name}" marked done`); });
   M.querySelectorAll("[data-medit]").forEach(b => b.onclick = () => maintForm(S.maint.find(x => x.id === b.dataset.medit)));
@@ -1972,10 +2162,12 @@ $("#fab").onclick = () => modal("Quick add", `<div class="sheet">
   <button data-q="order">New order<small>for later delivery</small></button>
   <button data-q="product">New product<small>with cost recipe</small></button>
   <button data-q="spool">New spool<small>filament</small></button>
+  <button data-q="job">Plan production<small>add to the queue</small></button>
+  <button data-q="calc">How long would it take?<small>order calculator</small></button>
   <button data-q="maint">Printer care<small>maintenance tasks</small></button>
   <button data-q="expense">New expense<small>purchase or running cost</small></button>
   <button data-q="idea">New idea<small>note it down</small></button></div>`, m => m.querySelectorAll("[data-q]").forEach(b => b.onclick = () => { close(); ({
-    print:()=>printForm(), order:()=>orderForm(), product:()=>productForm(), spool:()=>spoolForm(), idea:()=>noteForm("ideas"), expense:()=>expenseForm(), maint:()=>go("printer"),
+    print:()=>printForm(), order:()=>orderForm(), product:()=>productForm(), spool:()=>spoolForm(), idea:()=>noteForm("ideas"), expense:()=>expenseForm(), maint:()=>go("printer"), job:()=>jobForm(), calc:()=>{ filter.pt = "calc"; go("plan"); },
     sell:()=>{ const ps = S.products.filter(p=>n(p.stock)>0); if (!ps.length) return toast("Nothing in stock to sell"); modal("Sell which product?", `<div class="sheet">${ps.map(p=>`<button data-sp="${p.id}">${esc(p.name)}<small>${esc(p.type)} · ${n(p.stock)} in stock</small></button>`).join("")}</div>`, mm => mm.querySelectorAll("[data-sp]").forEach(x => x.onclick = () => { close(); sellForm(product(x.dataset.sp)); })); }
   })[b.dataset.q](); }));
 const h = (location.hash||"").slice(1); if (VIEWS.some(v=>v[0]===h)) view = h;
