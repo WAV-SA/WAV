@@ -127,11 +127,13 @@ tbody tr:hover{background:var(--sunk)}
 .dur label{position:relative;display:block}
 .dur label span{position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:13px;font-weight:500;pointer-events:none}
 .dur input{padding-right:40px}
-.thumb{width:44px;height:44px;border-radius:8px;object-fit:cover;background:var(--sunk);flex:none;display:block}
+.thumb{width:44px;height:44px;border-radius:8px;object-fit:contain;background:var(--sunk);flex:none;display:block}
 .pname{display:flex;gap:10px;align-items:center;min-width:0}
 [data-viewp]{cursor:pointer}
 [data-viewp]:hover .name{text-decoration:underline;text-underline-offset:3px}
 .hero{width:100%;aspect-ratio:4/3;max-height:320px;object-fit:cover;border-radius:12px;background:var(--sunk);display:block}
+img.hero{aspect-ratio:auto;height:auto;max-height:min(60vh,460px);object-fit:contain}
+img.hero:not([src]){aspect-ratio:4/3}
 .hero.ph{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:var(--muted);font-size:13px;border:1.5px dashed var(--line);background:transparent;aspect-ratio:16/7}
 .vgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:14px 0}
 .vgrid>div{background:var(--surface);padding:10px 12px}
@@ -150,7 +152,7 @@ tbody tr:hover{background:var(--sunk)}
 .chips button{all:unset;cursor:pointer;font-size:12px;font-weight:600;padding:4px 10px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
 .chips button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .photo-pick{display:flex;gap:12px;align-items:center}
-.photo-pick img{width:72px;height:72px;border-radius:10px;object-fit:cover;background:var(--sunk)}
+.photo-pick img{width:72px;height:72px;border-radius:10px;object-fit:contain;background:var(--sunk)}
 .drop{border:1.5px dashed var(--line);border-radius:10px;padding:12px 14px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;color:var(--muted);font-size:13px}
 .drop.over{border-color:var(--accent);background:var(--accent-soft)}
 .scrim{position:fixed;inset:0;background:color-mix(in srgb,#000 45%,transparent);display:flex;align-items:center;justify-content:center;padding:16px;z-index:40}
@@ -299,7 +301,7 @@ body.ro [data-count]{border-color:transparent;background:transparent}
 <script>
 (() => {
 const KEYS = ["products","spools","prints","orders","moves","fil","edits","expenses","maint","plan","supplies","smoves","pos","ideas","lessons","settings","trash"];
-const APP_VERSION = "2026.11.22b";
+const APP_VERSION = "2026.11.23a";
 const blank = () => ({products:[],spools:[],prints:[],orders:[],moves:[],fil:[],edits:[],expenses:[],maint:[],plan:[],supplies:[],smoves:[],pos:[],ideas:[],lessons:[],settings:{hour:2,energy:0.2,wear:0,failAllow:true,workspace:"WAV",currency:"SAR",feePct:0,packaging:0,targetMargin:50},trash:[]});
 let S = blank();
 let view = "home", db = null, mode = "local", loaded = false, filter = {};
