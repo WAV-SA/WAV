@@ -222,6 +222,13 @@ textarea{min-height:80px;resize:vertical}
 .menu .mt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.menu .mt small{color:var(--muted);font-size:13px}
 .menu .count{background:var(--accent);color:var(--accent-ink,#fff);border-radius:999px;padding:1px 8px;font-size:12px;font-weight:600}.menu .chev{color:var(--muted);font-size:22px;line-height:1}
 .tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.vlist{display:flex;flex-direction:column;gap:6px;min-width:0}.vline{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.vname{display:inline-flex;align-items:center;gap:6px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.vtot{text-align:right}
+.vchips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}.vchip{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:2px 8px 2px 4px;border:1px solid var(--line);border-radius:999px;color:var(--ink)}
+.vchip .sw{width:12px;height:12px}.vchip.out{opacity:.55}.vchip.out b{color:var(--bad)}
+.mat.vrow{grid-template-columns:44px minmax(0,1fr) minmax(0,1fr) auto}.mat.vrow input[type=color]{width:44px;height:38px;padding:2px;border-radius:8px}
+.mat.oitem{grid-template-columns:minmax(0,1fr) 70px 90px auto}.mat.oitem [data-ov]{grid-column:1/-1;order:5}
+@media (max-width:560px){.mat.vrow{grid-template-columns:44px minmax(0,1fr) auto}.mat.vrow [data-vsp]{grid-column:2/3}}
 .tag{display:inline-flex;align-items:center;gap:5px;font-size:12px;line-height:1.2;padding:3px 9px;border-radius:999px;background:var(--sunk);color:var(--muted);border:1px solid transparent;white-space:nowrap}
 .tag.aud{background:transparent;border-color:var(--line);color:var(--ink)}
 .tag.cls{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);font-weight:600}
@@ -301,7 +308,7 @@ body.ro [data-count]{border-color:transparent;background:transparent}
 <script>
 (() => {
 const KEYS = ["products","spools","prints","orders","moves","fil","edits","expenses","maint","plan","supplies","smoves","pos","ideas","lessons","settings","trash"];
-const APP_VERSION = "2026.11.23a";
+const APP_VERSION = "2026.11.27a";
 const blank = () => ({products:[],spools:[],prints:[],orders:[],moves:[],fil:[],edits:[],expenses:[],maint:[],plan:[],supplies:[],smoves:[],pos:[],ideas:[],lessons:[],settings:{hour:2,energy:0.2,wear:0,failAllow:true,workspace:"WAV",currency:"SAR",feePct:0,packaging:0,targetMargin:50},trash:[]});
 let S = blank();
 let view = "home", db = null, mode = "local", loaded = false, filter = {};
@@ -343,6 +350,17 @@ function unitGrams(p){
   const ms = (p.materials||[]).filter(m=>n(m.grams)>0), tot = ms.reduce((a,m)=>a+n(m.grams),0);
   return ms.map(m => ({spoolId:m.spoolId, grams: n(m.grams) + (tot ? n(p.flush)*n(m.grams)/tot : 0)}));
 }
+/* Colours: a product can have colour variants, each with its own stock. Ledger entries carry v (variant id); "" = no colour set. */
+const confirmOnce = (btn, msg) => { if (btn.dataset.armed) return true; btn.dataset.armed = "1"; toast(msg); setTimeout(() => delete btn.dataset.armed, 4000); return false; };
+const hasVar = p => !!(p && (p.variants||[]).length);
+const variantOf = (p, vid) => (p?.variants||[]).find(v => v.id === vid);
+const vName = (p, vid) => vid ? (variantOf(p, vid)?.name || "Removed colour") : "No colour";
+const vSw = (p, vid) => `<span class="sw" style="background:${hex(variantOf(p, vid)?.color)}"></span>`;
+const vQty = (p, vid) => n((p.vstock||{})[vid||""]);
+/* Recipe for one colour: the variant's filament replaces the main (first) filament of the recipe. */
+function unitGramsV(p, vid){ const ug = unitGrams(p), v = variantOf(p, vid); if (!v || !v.spoolId || !ug.length) return ug;
+  const main = (p.materials||[]).find(m => n(m.grams) > 0)?.spoolId; return ug.map(m => m.spoolId === main ? {...m, spoolId:v.spoolId} : m); }
+const vOptions = (p, sel, withStock) => (p.variants||[]).map(v => `<option value="${v.id}" ${v.id===sel?"selected":""}>${esc(v.name)}${withStock?` · ${vQty(p, v.id)} in stock`:""}</option>`).join("");
 function bomGrams(p){ const s = (p.materials||[]).reduce((a,m)=>a+n(m.grams),0); return s || n(p.grams); }
 function spoolState(s){ const r = n(s.remaining); if (r <= 0) return "bad"; if (r < n(s.min)) return "warn"; return "good"; }
 function stockState(p){ const s = n(p.stock); if (s <= 0) return "bad"; if (s < n(p.min)) return "warn"; return "good"; }
@@ -621,20 +639,20 @@ function ensureLedger(){
   return changed;
 }
 function recompute(){
-  const st = {}, rem = {};
-  S.moves.forEach(m => { if (m.opening || m.adj) st[m.product] = (st[m.product]||0) + n(m.delta); });
-  S.prints.forEach(pr => { if (!pr.dev) st[pr.product] = (st[pr.product]||0) + goodOf(pr); (pr.usage||[]).forEach(u => { rem[u.id] = (rem[u.id]||0) - n(u.grams); }); });
-  S.orders.forEach(o => { if (o.status==="delivered") (o.items||[]).forEach(i => { st[i.product] = (st[i.product]||0) - n(i.qty); }); });
+  const st = {}, rem = {}, vs = {}, addV = (pid, v, d) => { const o = vs[pid] = vs[pid] || {}; o[v||""] = (o[v||""]||0) + d; };
+  S.moves.forEach(m => { if (m.opening || m.adj){ st[m.product] = (st[m.product]||0) + n(m.delta); addV(m.product, m.v, n(m.delta)); } });
+  S.prints.forEach(pr => { if (!pr.dev){ st[pr.product] = (st[pr.product]||0) + goodOf(pr); addV(pr.product, pr.v, goodOf(pr)); } (pr.usage||[]).forEach(u => { rem[u.id] = (rem[u.id]||0) - n(u.grams); }); });
+  S.orders.forEach(o => { if (o.status==="delivered") (o.items||[]).forEach(i => { st[i.product] = (st[i.product]||0) - n(i.qty); addV(i.product, i.v, -n(i.qty)); }); });
   S.fil.forEach(f => { rem[f.spool] = (rem[f.spool]||0) + n(f.delta); });
-  S.products.forEach(p => { p.stock = Math.round(st[p.id]||0); });
+  S.products.forEach(p => { p.stock = Math.round(st[p.id]||0); if (hasVar(p)){ const o = {}; Object.entries(vs[p.id]||{}).forEach(([k,x]) => { x = Math.round(x); if (x || variantOf(p, k)) o[k] = x; }); p.variants.forEach(v => { if (!(v.id in o)) o[v.id] = 0; }); p.vstock = o; } else delete p.vstock; });
   S.spools.forEach(sp => { sp.remaining = Math.round((rem[sp.id]||0)*100)/100; });
   const ss = {}; S.smoves.forEach(x => ss[x.supply] = (ss[x.supply]||0) + n(x.delta)); S.prints.forEach(pr => (pr.sup||[]).forEach(x => ss[x.id] = (ss[x.id]||0) - n(x.qty)));
   S.supplies.forEach(su => { su.stock = Math.round((ss[su.id]||0)*100)/100; });
 }
-function logMove(pid, delta, reason, note){
+function logMove(pid, delta, reason, note, v){
   delta = Math.round(n(delta)); if (!delta) return;
   recompute(); const p = product(pid);
-  S.moves.unshift({id:uid(), adj:true, date:today(), at:new Date().toISOString(), product:pid, delta, reason, note:note||"", after:p?n(p.stock)+delta:null});
+  S.moves.unshift({id:uid(), adj:true, date:today(), at:new Date().toISOString(), product:pid, delta, reason, note:note||"", after:p?n(p.stock)+delta:null, ...(v ? {v} : {})});
   persist("moves");
 }
 function logFil(sid, delta, reason){
@@ -644,13 +662,14 @@ function logFil(sid, delta, reason){
 }
 function stockTimeline(){
   const since = S.settings.ledgerAt || "", out = [];
-  S.moves.forEach(m => { if (m.opening) return; out.push({at:m.at||m.date, product:m.product, delta:n(m.delta), reason:m.reason, note:m.note}); });
-  S.prints.forEach(pr => { if (pr.at && pr.at >= since && goodOf(pr)) out.push({at:pr.at, product:pr.product, delta:goodOf(pr), reason:"Printed"}); });
-  S.orders.forEach(o => { if (o.status==="delivered" && o.deliveredTs && o.deliveredTs >= since) (o.items||[]).forEach(i => out.push({at:o.deliveredTs, product:i.product, delta:-n(i.qty), reason:"Sold", note:o.customer||""})); });
+  const vn = (pid, v) => v ? vName(product(pid), v) : "";
+  S.moves.forEach(m => { if (m.opening) return; out.push({at:m.at||m.date, product:m.product, v:vn(m.product, m.v), delta:n(m.delta), reason:m.reason, note:m.note}); });
+  S.prints.forEach(pr => { if (pr.at && pr.at >= since && goodOf(pr)) out.push({at:pr.at, product:pr.product, v:vn(pr.product, pr.v), delta:goodOf(pr), reason:"Printed"}); });
+  S.orders.forEach(o => { if (o.status==="delivered" && o.deliveredTs && o.deliveredTs >= since) (o.items||[]).forEach(i => out.push({at:o.deliveredTs, product:i.product, v:vn(i.product, i.v), delta:-n(i.qty), reason:"Sold", note:o.customer||""})); });
   return out.sort((a,b)=>String(b.at).localeCompare(String(a.at)));
 }
 const OPEN = ["new","printing","ready"];
-function reserved(pid){ return S.orders.filter(o=>OPEN.includes(o.status)).reduce((a,o)=>a+(o.items||[]).filter(i=>i.product===pid).reduce((b,i)=>b+n(i.qty),0),0); }
+function reserved(pid, vid){ return S.orders.filter(o=>OPEN.includes(o.status)).reduce((a,o)=>a+(o.items||[]).filter(i=>i.product===pid && (vid === undefined || (i.v||"") === vid)).reduce((b,i)=>b+n(i.qty),0),0); }
 function available(p){ return n(p.stock) - reserved(p.id); }
 function suggestPrice(cost){ const m = n(S.settings.targetMargin)/100, f = n(S.settings.feePct)/100; const d = 1-m-f; return d>0.05 ? Math.ceil(cost/d) : 0; }
 /* Product stage. Older records only have category final/prototype, which map to Producing/Developing. */
@@ -676,6 +695,7 @@ function logPrint(rec){
   const pr = {id:uid(), at:new Date().toISOString(), name:p?.name||rec.name||"Print", product:rec.product, date:rec.date||today(), qty, goodQty, minutes:n(rec.minutes), grams:Math.round(grams*100)/100, usage, good:goodQty>0, failReason:goodQty<qty?(rec.failReason||""):"", progress:goodQty===0 && rec.progress<100 ? rec.progress : undefined, notes:rec.notes||"", cost};
   recompute();
   if (rec.dev) pr.dev = true;
+  if (p && rec.v) pr.v = rec.v;
   if (!rec.dev && p && goodQty > 0 && (p.supplies||[]).length) pr.sup = p.supplies.filter(x => n(x.qty) > 0).map(x => ({id:x.supplyId, qty:n(x.qty)*goodQty}));
   if (p && goodQty > 0 && !rec.dev){
     const before = Math.max(0, n(p.stock)), unit = cost/goodQty;
@@ -866,7 +886,7 @@ function vProducts(){
   return head("Products", "Cost is filament + printer time + extras. Only products you're producing go in the restock plan.", `<div class="tabs">${[["all","All "+S.products.length],["sell","Producing "+cnt("sell")],["dev","Developing "+cnt("dev")],["retired","Retired "+cnt("retired")]].map(([k,l])=>`<button data-pc="${k}" aria-pressed="${pc===k}">${l}</button>`).join("")}</div><input id="pq" type="search" placeholder="Search" value="${esc(filter.p||"")}" style="width:180px">${sortSelect()}<button class="btn primary" data-act="newProduct">Add product</button>`) + tagBar(base) +
   (list.length ? `<div class="tablewrap"><table data-compact><thead><tr><th>Product</th><th>Filament</th><th class="r">Print</th><th class="r">Unit cost</th><th class="r">Price</th><th class="r">Margin</th><th class="r">Stock</th><th></th></tr></thead><tbody>${list.map(p=>{
     const c = unitCost(p), m = n(p.price)?(n(p.price)-c)/n(p.price)*100:0, st = stockState(p);
-    return `<tr><td>${pname(p)}${tagChips(p)}</td>
+    return `<tr><td>${pname(p)}${tagChips(p)}${hasVar(p) ? `<div class="vchips">${p.variants.map(v => `<span class="vchip ${vQty(p, v.id) <= 0 ? "out" : ""}" title="${esc(v.name)}">${vSw(p, v.id)}<b class="num">${vQty(p, v.id)}</b></span>`).join("")}</div>` : ""}</td>
     <td><div class="swrow">${(p.materials||[]).map(mm=>{const s=spool(mm.spoolId);return `<span class="sw" title="${esc(s?.name||"?")} ${g(mm.grams)} g" style="background:${hex(s?.color)}"></span>`}).join("")}<span class="meta num" style="margin-left:6px">${g(bomGrams(p))} g</span></div></td>
     <td class="r num">${hrs(p.minutes)}</td><td class="r num">${money(c)}</td><td class="r num">${money(p.price)}${suggestPrice(c)?`<div class="meta">suggested ${money(suggestPrice(c))}</div>`:""}</td>
     <td class="r k"><span class="pill ${m>=50?"good":m>=25?"warn":"bad"}">${Math.round(m)}%</span></td>
@@ -917,7 +937,8 @@ function vStock(){
   const plan = restockPlan();
   const rows = sortProducts(S.products.filter(tagFilter)).map(p => { const r = reserved(p.id), av = n(p.stock)-r, st = av<=0?"bad":av<n(p.min)?"warn":"good";
     return `<tr><td>${pname(p)}</td>
-    <td class="k"><div class="stepper"><button class="btn sm" data-step="${p.id}" data-d="-1" aria-label="Remove one">−</button><input class="num" data-count="${p.id}" type="number" min="0" value="${n(p.stock)}" aria-label="On hand for ${esc(p.name)}"><button class="btn sm" data-step="${p.id}" data-d="1" aria-label="Add one">+</button></div></td>
+    <td class="k">${hasVar(p) ? `<div class="vlist">${Object.keys(p.vstock||{}).filter(k => variantOf(p, k) || vQty(p, k)).map(k => { const key = p.id+"|"+k, rv = reserved(p.id, k); return `<div class="vline"><span class="vname">${vSw(p, k)}${esc(vName(p, k))}${rv?` <span class="meta">${rv} reserved</span>`:""}</span><div class="stepper"><button class="btn sm" data-vstep="${key}" data-d="-1" aria-label="Remove one ${esc(vName(p, k))}">−</button><input class="num" data-vcount="${key}" type="number" min="0" value="${vQty(p, k)}" aria-label="${esc(vName(p, k))} on hand"><button class="btn sm" data-vstep="${key}" data-d="1" aria-label="Add one ${esc(vName(p, k))}">+</button></div></div>`; }).join("")}<div class="meta vtot">Total <b class="num">${n(p.stock)}</b></div></div>`
+      : `<div class="stepper"><button class="btn sm" data-step="${p.id}" data-d="-1" aria-label="Remove one">−</button><input class="num" data-count="${p.id}" type="number" min="0" value="${n(p.stock)}" aria-label="On hand for ${esc(p.name)}"><button class="btn sm" data-step="${p.id}" data-d="1" aria-label="Add one">+</button></div>`}</td>
     <td class="r num">${r||"—"}</td><td class="r k"><span class="pill ${st}">${av}</span></td><td class="r num">${n(p.min)}</td><td class="r num">${money(n(p.stock)*n(p.price))}</td>
     <td class="r"><div class="row" style="justify-content:flex-end;flex-wrap:nowrap"><button class="btn sm" data-sell="${p.id}" ${n(p.stock)?"":"disabled"}>Sell</button><button class="btn sm ghost" data-adjp="${p.id}">Adjust</button></div></td></tr>`; }).join("");
   const need = {}; plan.forEach(x => x.mats.forEach(m => need[m.spoolId] = (need[m.spoolId]||0) + m.grams));
@@ -926,25 +947,31 @@ function vStock(){
   <p class="meta" style="margin:8px 2px 24px">Type a count or use − / + to correct stock. Reserved = units in open orders. Every change is logged below.</p>` : `<div class="empty">No products yet.</div>`) +
   `<div class="grid2"><section class="panel"><h2>Restock plan</h2>${plan.length ? `<div class="tablewrap" style="border:0"><table><thead><tr><th>Print</th><th class="r">Units</th><th class="r">Time</th><th></th></tr></thead><tbody>${plan.map(x=>`<tr><td><div class="name">${esc(x.p.name)}</div><div class="meta">${esc(x.p.type)}</div></td><td class="r num">${x.need}</td><td class="r num">${hrs(x.minutes)}</td><td class="r"><button class="btn sm" data-print="${x.p.id}" data-q="${x.need}">Log print</button></td></tr>`).join("")}</tbody></table></div>
     <div class="list" style="gap:6px;margin-top:12px"><div class="eyebrow">Filament needed</div>${Object.entries(need).map(([id,gr])=>{ const sp=spool(id), short = !sp || n(sp.remaining) < gr; return `<div class="row" style="justify-content:space-between"><span class="row" style="gap:8px"><span class="sw" style="background:${hex(sp?.color)}"></span>${esc(sp?.name.trim()||"Deleted spool")}</span><span class="num ${short?"":"meta"}" style="${short?"color:var(--bad);font-weight:600":""}">${g(gr)} g / ${g(sp?.remaining)} g${short?" · buy more":""}</span></div>`; }).join("")}</div>` : `<p class="meta">Every product is at or above its minimum.</p>`}</section>
-  <section class="panel"><h2>Stock history</h2>${stockTimeline().length ? `<div class="list" style="gap:0">${stockTimeline().slice(0,30).map(m=>`<div class="item"><div style="min-width:0"><div class="name">${esc(product(m.product)?.name||"Deleted product")} <span class="meta">${esc(m.reason)}${m.note?" · "+esc(m.note):""}</span></div><div class="meta">${fmtDate(String(m.at).slice(0,10))}</div></div><span class="num" style="font-weight:600;color:var(--${m.delta>0?"good":"bad"})">${m.delta>0?"+":""}${m.delta}</span></div>`).join("")}</div>` : `<p class="meta">Changes to stock will show here.</p>`}</section></div>`;
+  <section class="panel"><h2>Stock history</h2>${stockTimeline().length ? `<div class="list" style="gap:0">${stockTimeline().slice(0,30).map(m=>`<div class="item"><div style="min-width:0"><div class="name">${esc(product(m.product)?.name||"Deleted product")}${m.v?` · ${esc(m.v)}`:""} <span class="meta">${esc(m.reason)}${m.note?" · "+esc(m.note):""}</span></div><div class="meta">${fmtDate(String(m.at).slice(0,10))}</div></div><span class="num" style="font-weight:600;color:var(--${m.delta>0?"good":"bad"})">${m.delta>0?"+":""}${m.delta}</span></div>`).join("")}</div>` : `<p class="meta">Changes to stock will show here.</p>`}</section></div>`;
 }
-function setStock(pid, value, reason, note){
-  recompute(); const p = product(pid); if (!p) return; const b = n(p.stock), v = Math.max(0, Math.round(n(value)));
-  if (v === b) return; logMove(pid, v-b, reason, note); render();
+function setStock(pid, value, reason, note, vid){
+  recompute(); const p = product(pid); if (!p) return; const useV = vid !== undefined && hasVar(p), b = useV ? vQty(p, vid) : n(p.stock), v = Math.max(0, Math.round(n(value)));
+  if (v === b) return; logMove(pid, v-b, reason, note, useV ? vid : undefined); render();
 }
 function adjustStockForm(p){
+  const hv = hasVar(p);
   modal("Adjust stock · "+p.name, `<p class="meta">${esc(p.type)} · on hand <b class="num">${n(p.stock)}</b></p><div class="form">
+    ${hv ? `<label class="f full">Colour<select id="j_v">${vOptions(p, p.variants[0].id, true)}${vQty(p, "") ? `<option value="">No colour · ${vQty(p, "")} in stock</option>` : ""}</select></label>` : ""}
     <label class="f">Change by<input id="j_d" type="number" value="0" placeholder="-2 or 5"></label>
     <label class="f">Or set count to<input id="j_set" type="number" min="0" placeholder="${n(p.stock)}"></label>
     <label class="f">Reason<select id="j_r">${REASONS_ADJ.map(r=>`<option>${r}</option>`).join("")}</select></label>
     <label class="f">Note<input id="j_n" placeholder="optional"></label>
   </div><div class="foot"><button class="btn" data-x>Cancel</button><button class="btn primary" id="jsave">Save</button></div>`, m => {
     m.querySelector("[data-x]").onclick = close;
-    $("#jsave").onclick = () => { const set = $("#j_set").value.trim(), target = set!=="" ? n(set) : n(p.stock)+n($("#j_d").value), reason = $("#j_r").value, note = $("#j_n").value.trim(); close(); setStock(p.id, target, reason, note); toast("Stock updated"); };
+    const cur0 = () => hv ? vQty(p, $("#j_v").value) : n(p.stock);
+    if (hv) $("#j_v").onchange = () => { $("#j_set").placeholder = cur0(); };
+    $("#jsave").onclick = () => { const set = $("#j_set").value.trim(), target = set!=="" ? n(set) : cur0()+n($("#j_d").value), reason = $("#j_r").value, note = $("#j_n").value.trim(), vid = hv ? $("#j_v").value : undefined; close(); setStock(p.id, target, reason, note, vid); toast("Stock updated"); };
   });
 }
 function sellForm(p){
+  const hv = hasVar(p), inStock = hv ? Object.keys(p.vstock||{}).filter(k => vQty(p, k) > 0) : [];
   modal("Quick sale · "+p.name, `<p class="meta">Records a delivered order and takes the units out of stock.</p><div class="form">
+    ${hv ? `<label class="f full">Colour<select id="q_v">${inStock.map(k => `<option value="${k}">${esc(vName(p, k))} · ${vQty(p, k)} in stock</option>`).join("")}</select></label>` : ""}
     <label class="f">Units<input id="q_q" type="number" min="1" max="${n(p.stock)}" value="1"></label>
     <label class="f">Unit price<input id="q_p" type="number" step="0.01" value="${n(p.price)}"></label>
     <label class="f">Channel<select id="q_c">${CHANNELS.map(c=>`<option ${c===(S.settings.lastChannel||"In person")?"selected":""}>${c}</option>`).join("")}</select></label>
@@ -953,8 +980,8 @@ function sellForm(p){
   </div><div class="foot"><button class="btn" data-x>Cancel</button><button class="btn primary" id="qsave">Record sale</button></div>`, m => {
     m.querySelector("[data-x]").onclick = close;
     $("#qsave").onclick = () => { const q = Math.max(1, Math.round(n($("#q_q").value)));
-      const o = {id:uid(), customer:$("#q_cu").value.trim(), contact:"", channel:$("#q_c").value, paid:$("#q_paid").checked, status:"delivered", deliveredAt:today(), created:today(), due:"", discount:0, shipCharge:0, shipCost:0, feePct:n(S.settings.feePct), packaging:n(S.settings.packaging), notes:"Quick sale", items:[{product:p.id, qty:q, price:n($("#q_p").value)}]};
-      S.orders.unshift(o); S.settings.lastChannel = o.channel; o.deliveredTs = new Date().toISOString(); persist("orders","settings"); close(); render(); toast(`Sold ${q} × ${p.name}`); };
+      const o = {id:uid(), customer:$("#q_cu").value.trim(), contact:"", channel:$("#q_c").value, paid:$("#q_paid").checked, status:"delivered", deliveredAt:today(), created:today(), due:"", discount:0, shipCharge:0, shipCost:0, feePct:n(S.settings.feePct), packaging:n(S.settings.packaging), notes:"Quick sale", items:[{product:p.id, qty:q, price:n($("#q_p").value), ...(hv && $("#q_v").value ? {v:$("#q_v").value} : {})}]};
+      S.orders.unshift(o); S.settings.lastChannel = o.channel; o.deliveredTs = new Date().toISOString(); persist("orders","settings"); close(); render(); toast(`Sold ${q} × ${p.name}${o.items[0].v?" "+vName(p, o.items[0].v):""}`); };
   });
 }
 
@@ -1115,14 +1142,14 @@ async function exportExcel(per){
     const ords = S.orders.filter(o => inPeriod(orderDate(o), per)).sort((a,b) => String(orderDate(a)).localeCompare(String(orderDate(b))));
     sheet("Orders", [["Order no","Date","Customer","Contact","Channel","Type","Items","Subtotal","Discount","Shipping charged","Total","Fees","Shipping paid","Packaging","Cost","Net profit","Status","Paid","Deposit"],
       ...ords.map(o => [orderNo(o), orderDate(o), o.customer||"", o.contact||"", o.channel||"", isSpecial(o)?"Special":"Products",
-        isSpecial(o) ? (o.custom?.desc||"") : (o.items||[]).map(i => `${n(i.qty)}× ${product(i.product)?.name||"?"} ${product(i.product)?.type||""}`.trim()).join("; "),
+        isSpecial(o) ? (o.custom?.desc||"") : (o.items||[]).map(i => `${n(i.qty)}× ${product(i.product)?.name||"?"} ${product(i.product)?.type||""}${i.v?" ("+vName(product(i.product), i.v)+")":""}`.trim()).join("; "),
         r2(orderSub(o)), r2(o.discount), r2(o.shipCharge), r2(orderTotal(o)), r2(orderFees(o)), r2(o.shipCost), r2(o.packaging ?? S.settings.packaging), r2(orderCost(o)), r2(orderNet(o)),
         (STATUSES.find(s => s[0] === o.status)||[])[1]||o.status, o.paid?"Yes":"No", r2(o.custom?.deposit)])], [16,11,16,14,14,10,40,10,9,10,10,8,10,10,9,10,11,6,9]);
     sheet("Expenses", [["Date","Description","Category","Paid by","Amount","Monthly"], ...P.ex.slice().reverse().map(x => [x.date, x.e.desc||"", x.e.category||"", x.e.paidBy||"", r2(x.amount), x.recurring?"Yes":""])], [11,30,22,14,10,8]);
     const prs = S.prints.filter(pr => inPeriod(pr.date, per)).sort((a,b) => String(a.date).localeCompare(String(b.date)));
     sheet("Prints", [["Date","Product","Qty","Good","Purpose","Grams","Minutes","Cost","Notes"], ...prs.map(pr => { const pd = product(pr.product), po = pr.order ? S.orders.find(o => o.id === pr.order) : null;
       return [pr.date, pr.order ? "Special: " + (po?.customer||"") : `${pd?.name||pr.name||""} ${pd?.type||""}`.trim(), n(pr.qty), goodOf(pr), pr.dev ? "Development test" : pr.order ? "Special order" : "Production", r2(pr.grams), Math.round(n(pr.minutes)), r2(pr.cost), [pr.failReason, pr.notes].filter(Boolean).join(" · ")]; })], [11,30,5,5,16,8,8,8,30]);
-    sheet("Stock", [["Product","Name","Stage","Category","For","Classification","Tags","On hand","Reserved","Available","Unit cost","Price","Value at price"], ...S.products.map(p => [p.name, p.type||"", stageInfo(p)[1], p.pcat||"", audLabel(p.audience), classOf(p), (p.tags||[]).join(", "), n(p.stock), reserved(p.id), available(p), r2(unitCost(p)), r2(p.price), r2(n(p.stock)*n(p.price))])], [10,28,22,16,9,22,30,8,8,9,9,8,12]);
+    sheet("Stock", [["Product","Name","Stage","Category","For","Classification","Tags","By colour","On hand","Reserved","Available","Unit cost","Price","Value at price"], ...S.products.map(p => [p.name, p.type||"", stageInfo(p)[1], p.pcat||"", audLabel(p.audience), classOf(p), (p.tags||[]).join(", "), hasVar(p) ? Object.keys(p.vstock||{}).filter(k => variantOf(p, k) || vQty(p, k)).map(k => `${vName(p, k)} ${vQty(p, k)}`).join(", ") : "", n(p.stock), reserved(p.id), available(p), r2(unitCost(p)), r2(p.price), r2(n(p.stock)*n(p.price))])], [10,28,22,16,9,22,30,28,8,8,9,9,8,12]);
     sheet("Purchases", [["PO","Supplier","Ordered","Expected","Status","Items","Shipping","Total"], ...S.pos.filter(po => inPeriod(po.created, per)).map(po => [poNo(po), po.supplier||"", po.created, po.expected||"", (PO_STATUS.find(s=>s[0]===po.status)||[])[1]||po.status, (po.lines||[]).map(l => `${n(l.qty)}× ${lineLabel(l)} @ ${r2(l.unitCost)}`).join("; "), r2(po.shipping), r2(poTotal(po))])], [16,18,11,11,14,50,9,10]);
     sheet("Materials", [["Material","On hand","Unit","Reorder at","Cost per unit","Value"], ...S.supplies.map(su => [su.name, r2(su.stock), su.unit||"pcs", reorderPoint(su).rop, Math.round(n(su.unitCost)*1000)/1000, r2(n(su.stock)*n(su.unitCost))])], [30,10,7,10,12,10]);
     sheet("Filament", [["Spool","Remaining g","Net weight g","Price","Price per g","Value"], ...S.spools.map(sp => [sp.name.trim(), r2(sp.remaining), n(sp.initial), r2(sp.price), Math.round(ppg(sp)*10000)/10000, r2(n(sp.remaining)*ppg(sp))])], [26,12,12,8,10,9]);
@@ -1133,7 +1160,7 @@ async function exportExcel(per){
 /* ---------- customer invoice (drawn on a canvas so it can be shared as an image) ---------- */
 async function invoiceForm(o){
   recompute();
-  const st = S.settings, rows = isSpecial(o) ? [{d:o.custom?.desc||"Special order", q:1, u:n(o.custom?.price)}] : (o.items||[]).map(i => ({d:`${product(i.product)?.name||""} ${product(i.product)?.type||""}`.trim(), q:n(i.qty), u:n(i.price)}));
+  const st = S.settings, rows = isSpecial(o) ? [{d:o.custom?.desc||"Special order", q:1, u:n(o.custom?.price)}] : (o.items||[]).map(i => ({d:`${product(i.product)?.name||""} ${product(i.product)?.type||""}${i.v?" · "+vName(product(i.product), i.v):""}`.trim(), q:n(i.qty), u:n(i.price)}));
   const dep = n(o.custom?.deposit), total = orderTotal(o), due = o.paid ? 0 : Math.max(0, total - dep);
   const W = 1080, pad = 70, c = document.createElement("canvas"), x = c.getContext("2d");
   try{ await document.fonts.ready; }catch(e){}
@@ -1724,9 +1751,9 @@ function vOrders(){
   return head("Orders", `Delivered orders leave stock automatically.${unpaid?` <b class="num">${money(unpaid)} ${cur()}</b> still unpaid.`:""}`, `<div class="tabs">${[["open","Open"],["delivered","Delivered"],["all","All"]].map(([k,l])=>`<button data-of="${k}" aria-pressed="${f===k}">${l}</button>`).join("")}</div><button class="btn primary" data-act="newOrder">New order</button>`) +
   (list.length ? `<div class="tablewrap"><table data-compact><thead><tr><th>Customer</th><th>Items</th><th>Due</th><th class="r">Total</th><th class="r">Net profit</th><th>Payment</th><th>Status</th><th></th></tr></thead><tbody>${list.map(o=>{
     const st = STATUSES.find(s=>s[0]===o.status)||STATUSES[0], t=orderTotal(o);
-    const short = (o.items||[]).some(i=>{const p=product(i.product);return p && n(p.stock)<n(i.qty)}) && !["delivered","cancelled"].includes(o.status);
+    const short = (o.items||[]).some(i=>{const p=product(i.product);return p && (i.v && hasVar(p) ? vQty(p, i.v) : n(p.stock))<n(i.qty)}) && !["delivered","cancelled"].includes(o.status);
     return `<tr><td><div class="name">${esc(o.customer||"—")}${isSpecial(o)?` <span class="pill neutral" style="vertical-align:1px">Special</span>`:""}</div><div class="meta">${esc([o.channel,o.contact].filter(Boolean).join(" · "))}</div></td>
-    <td>${isSpecial(o) ? `<div class="pname">${o.custom?.photo?`<img class="thumb" data-ophoto="${o.id}" alt="" width="44" height="44">`:""}<div style="min-width:0"><div><span class="pill neutral">Special</span> ${esc((o.custom?.desc||"").slice(0,70))}${(o.custom?.desc||"").length>70?"…":""}</div><div class="meta">${specialPrints(o).length ? `${specialPrints(o).length} print${specialPrints(o).length>1?"s":""} · cost ${money(orderCost(o))}` : `estimated cost ${money(orderCost(o))}`}</div></div></div>` : (o.items||[]).map(i=>`<div>${n(i.qty)}× ${esc(product(i.product)?.name||"?")} <span class="meta">${esc(product(i.product)?.type||"")}</span></div>`).join("")}${short?`<span class="pill warn">Not enough stock</span>`:""}</td>
+    <td>${isSpecial(o) ? `<div class="pname">${o.custom?.photo?`<img class="thumb" data-ophoto="${o.id}" alt="" width="44" height="44">`:""}<div style="min-width:0"><div><span class="pill neutral">Special</span> ${esc((o.custom?.desc||"").slice(0,70))}${(o.custom?.desc||"").length>70?"…":""}</div><div class="meta">${specialPrints(o).length ? `${specialPrints(o).length} print${specialPrints(o).length>1?"s":""} · cost ${money(orderCost(o))}` : `estimated cost ${money(orderCost(o))}`}</div></div></div>` : (o.items||[]).map(i=>`<div>${n(i.qty)}× ${esc(product(i.product)?.name||"?")}${i.v?` ${vSw(product(i.product), i.v)}${esc(vName(product(i.product), i.v))}`:""} <span class="meta">${esc(product(i.product)?.type||"")}</span></div>`).join("")}${short?`<span class="pill warn">Not enough stock</span>`:""}</td>
     <td class="num">${fmtDate(o.due)}</td><td class="r num k">${money(t)}</td><td class="r num" style="color:var(--${orderNet(o)>=0?"ink":"bad"})">${money(orderNet(o))}</td><td><button class="btn ghost sm" style="padding:0" data-paid="${o.id}" title="Toggle payment">${o.paid?`<span class="pill good">Paid</span>`:n(o.custom?.deposit)?`<span class="pill warn">Deposit ${money(o.custom.deposit)}</span>`:`<span class="pill warn">Unpaid</span>`}</button></td>
     <td class="k"><select data-ostatus="${o.id}" aria-label="Status" style="width:auto">${STATUSES.map(s=>`<option value="${s[0]}" ${s[0]===o.status?"selected":""}>${s[1]}</option>`).join("")}</select></td>
     <td class="r"><div class="row" style="justify-content:flex-end;flex-wrap:nowrap">${isSpecial(o) && !["delivered","cancelled"].includes(o.status)?`<button class="btn sm" data-print="order:${o.id}">Print</button>`:""}<button class="btn sm ghost" data-inv="${o.id}">Invoice</button><button class="btn sm ghost" data-edito="${o.id}">Edit</button></div></td></tr>`;}).join("")}</tbody></table></div>${allO.length > olim ? `<div class="row" style="justify-content:center;margin-top:12px"><button class="btn" data-more="on" data-n="${olim+100}">Show ${Math.min(100, allO.length-olim)} more of ${allO.length}</button></div>` : ""}`
@@ -1796,6 +1823,7 @@ function productForm(p){
   const isNew = !p; p = p ? JSON.parse(JSON.stringify(p)) : {id:uid(), name:"WAV"+String(S.products.length+1).padStart(3,"0"), type:"", minutes:60, extras:0, price:0, min:5, stock:0, avgCost:0, materials:[{spoolId:S.spools[0]?.id||"", grams:0}]};
   if (!p.materials || !p.materials.length) p.materials = [{spoolId:p.spoolId||S.spools[0]?.id||"", grams:n(p.grams)}];
   const ptags = (p.tags||[]).map(normTag).filter(Boolean);
+  const varRow = (v,i) => `<div class="mat vrow" data-vi="${esc(v.id)}"><input data-vc type="color" value="${hex(v.color)}" aria-label="Colour swatch"><input data-vn value="${esc(v.name)}" placeholder="Colour name, e.g. Black" aria-label="Colour name"><select data-vsp aria-label="Filament for this colour"><option value="">Same as recipe</option>${S.spools.map(s => `<option value="${s.id}" ${s.id===v.spoolId?"selected":""}>${esc(s.name.trim())}</option>`).join("")}</select><button class="btn sm ghost" data-vdel type="button" aria-label="Remove colour">✕</button></div>`;
   const matRow = (m,i) => `<div class="mat" data-mi="${i}"><select data-mspool aria-label="Spool">${spoolOptions(m.spoolId)}</select><input data-mg type="number" step="0.01" min="0" value="${n(m.grams)}" aria-label="Grams"><button class="btn sm ghost" data-mdel aria-label="Remove">✕</button></div>`;
   modal(isNew?"Add product":"Edit "+p.name, `<div class="form">
     <div class="f full"><span>Photo</span><div class="photo-pick"><img id="p_photo_img" ${p.photo?`data-photo="${p.id}"`:""} alt="" ${p.photo?"":'style="visibility:hidden"'}><div class="row"><button class="btn sm" type="button" id="p_photo_pick">${p.photo?"Change photo":"Add photo"}</button><button class="btn sm ghost danger" type="button" id="p_photo_del" ${p.photo?"":"hidden"}>Remove</button></div></div></div>
@@ -1807,6 +1835,8 @@ function productForm(p){
     <p class="meta full" id="p_cls" style="margin:-4px 0 0"></p>
     <div class="f full"><span>Extra tags <span class="meta" style="font-weight:400">optional: season, theme, colour</span></span><div class="tagin" id="p_tags"><input id="p_tagin" list="p_taglist" placeholder="Type a tag and press Enter" aria-label="Add tag" enterkeyhint="done"></div><datalist id="p_taglist">${allTags().map(t => `<option value="${esc(t.name)}">`).join("")}</datalist><div class="tagsug" id="p_tagsug"></div></div>
     ${bambuDrop("p_bb", "Fill the recipe from a Bambu Studio sliced file")}
+    <div class="full"><div class="eyebrow" style="margin-bottom:6px">Colours <span class="meta" style="text-transform:none;letter-spacing:0;font-weight:400">optional · each colour gets its own stock</span></div><div id="pvars" class="list" style="gap:6px">${(p.variants||[]).map(varRow).join("")}</div>
+      <button class="btn sm" id="addVar" type="button" style="margin-top:6px">Add colour option</button><p class="meta" id="pvar_note" style="margin:6px 0 0">${hasVar(p) ? "Pick a filament to swap the main colour of the recipe when you print that colour." : "Selling the same design in several colours? Add them here to count stock per colour."}</p></div>
     <div class="full"><div class="eyebrow" style="margin-bottom:6px">Filament per unit (g)</div><div class="list" id="mats" style="gap:6px">${p.materials.map(matRow).join("")}</div><button class="btn sm" id="addMat" style="margin-top:6px">Add colour</button></div>
     ${durField("p_min", p.minutes, "Print time per piece")}
     <div class="full"><div class="eyebrow" style="margin-bottom:6px">Other materials per piece</div><div id="psups" class="list" style="gap:6px">${(p.supplies||[]).map((x,i) => supRow(x,i)).join("")}</div>
@@ -1814,13 +1844,15 @@ function productForm(p){
     <label class="f">Other extras per unit (${cur()})<input id="p_ext" type="number" step="0.01" value="${n(p.extras)}"></label>
     <label class="f">Sale price (${cur()})<input id="p_price" type="number" step="0.01" value="${n(p.price)}"></label>
     <label class="f">Minimum stock<input id="p_minst" type="number" value="${n(p.min)}"></label>
-    <label class="f">In stock<input id="p_stock" type="number" value="${n(p.stock)}"></label>
+    <label class="f">In stock<input id="p_stock" type="number" value="${n(p.stock)}" ${hasVar(p)?'disabled title="Set stock per colour in Inventory"':""}>${hasVar(p)?`<span style="font-weight:400" class="meta">Per colour in Inventory</span>`:""}</label>
     <label class="f">Pieces per plate<input id="p_plate" type="number" min="1" value="${perPlate(p)}"><span style="font-weight:400">How many you print together</span></label>
     <label class="f full">AMS colour-change waste per unit (g)<input id="p_flush" type="number" step="0.1" min="0" value="${n(p.flush)}"><span style="font-weight:400">From Bambu Studio's filament summary: "Flushed" grams ÷ units on the plate. Single-colour prints: 0.</span></label>
     <label class="f check" style="align-self:end"><input id="p_nfc" type="checkbox" ${p.nfc?"checked":""}> Has NFC chip</label>
     <div class="full calc" id="pcalc"></div>
   </div><div class="foot">${isNew?"":`<button class="btn danger" id="pdel" style="margin-right:auto">Delete</button>`}<button class="btn" data-x>Cancel</button><button class="btn primary" id="psave">Save</button></div>`, m => {
     const read = () => { p.materials = [...m.querySelectorAll("[data-mi]")].map(r=>({spoolId:r.querySelector("[data-mspool]").value, grams:n(r.querySelector("[data-mg]").value)}));
+      p.variants = [...m.querySelectorAll("[data-vi]")].map(r => ({id:r.dataset.vi, name:normTag(r.querySelector("[data-vn]").value), color:r.querySelector("[data-vc]").value, spoolId:r.querySelector("[data-vsp]").value})).filter(v => v.name);
+      if (!p.variants.length) delete p.variants;
       p.supplies = [...m.querySelectorAll("[data-si]")].map(r => ({supplyId:r.querySelector("[data-ssup]").value, qty:n(r.querySelector("[data-sq]").value)})).filter(x => x.qty > 0); Object.assign(p,{name:$("#p_name").value.trim(), type:$("#p_type").value.trim(), minutes:n($("#p_min").value), extras:n($("#p_ext").value), price:n($("#p_price").value), min:n($("#p_minst").value), stock:n($("#p_stock").value), flush:n($("#p_flush").value), perPlate:Math.max(1, Math.round(n($("#p_plate").value)||1)), nfc:$("#p_nfc").checked, audience:(m.querySelector('input[name="p_aud"]:checked')||{}).value||"", pcat:normTag($("#p_pcat").value), tags:[...ptags], stage:(m.querySelector('input[name="p_stage"]:checked')||{}).value||"prod"}); p.category = ["idea","dev"].includes(p.stage) ? "prototype" : "final"; p.grams = Math.round(p.materials.reduce((a,x)=>a+x.grams,0)*100)/100; };
     const calc = () => { read(); const k=costParts(p), c=k.total, pr=n(p.price)-c; $("#pcalc").innerHTML = `<div>Filament<b>${money(k.fil)}</b></div><div>Colour-change waste<b>${money(k.flush)}</b></div><div>Printer time<b>${money(k.time)}</b></div><div>Failure allowance<b>${money(k.fail)}</b><small>${Math.round(k.fr*100)}% fail rate</small></div>${k.mats?`<div>Materials<b>${money(k.mats)}</b></div>`:""}${k.extras?`<div>Extras<b>${money(k.extras)}</b></div>`:""}<div>Unit cost<b>${money(c)}</b></div><div>Profit<b style="color:var(--${pr>=0?"good":"bad"})">${money(pr)}</b></div><div>Suggested price<b>${suggestPrice(c)?money(suggestPrice(c)):"—"}</b><button class="btn sm ghost" type="button" id="useSug" style="padding:0;margin-top:2px">Use it</button></div>`; const u=$("#useSug"); if (u) u.onclick = () => { $("#p_price").value = suggestPrice(c); calc(); }; };
     const wire = () => m.querySelectorAll("[data-mdel]").forEach(b => b.onclick = () => { b.closest("[data-mi]").remove(); calc(); });
@@ -1843,6 +1875,11 @@ function productForm(p){
       $("#p_catsug").querySelectorAll("[data-catadd]").forEach(b => b.onclick = () => { $("#p_pcat").value = b.dataset.catadd; drawCat(); }); };
     $("#p_pcat").addEventListener("input", drawCat); m.querySelectorAll('input[name="p_aud"]').forEach(r => r.addEventListener("change", drawCat)); ["p_name","p_type"].forEach(id => $("#"+id).addEventListener("change", drawCat)); drawCat();
     $("#addMat").onclick = () => { $("#mats").insertAdjacentHTML("beforeend", matRow({spoolId:S.spools[0]?.id, grams:0}, Date.now())); wire(); };
+    m.addEventListener("change", e => { if (!e.target.matches("[data-vsp]")) return; const sp = spool(e.target.value), r = e.target.closest("[data-vi]"); if (!sp) return;
+      r.querySelector("[data-vc]").value = hex(sp.color); const nm = r.querySelector("[data-vn]"); if (!nm.value.trim()) nm.value = titleCase(String(sp.name).trim().split(/\s+/).filter(w => !/^(pla|petg|abs|asa|tpu|pla\+|matte|basic|silk|hf|cf)$/i.test(w)).join(" ")); });
+    const wireVar = () => m.querySelectorAll("[data-vdel]").forEach(b => b.onclick = () => { const r = b.closest("[data-vi]"), k = r.dataset.vi, cur = product(p.id); if (cur && vQty(cur, k) > 0 && !confirmOnce(b, `${vQty(cur, k)} in stock. Tap again to remove; they'll show as "No colour".`)) return; r.remove(); }); wireVar();
+    $("#addVar").onclick = () => { const used = new Set([...m.querySelectorAll("[data-vsp]")].map(x => x.value)); const sp = S.spools.find(s => !used.has(s.id));
+      $("#pvars").insertAdjacentHTML("beforeend", varRow({id:uid(), name:"", color:sp?.color||"#888888", spoolId:""})); wireVar(); $("#pvars").lastElementChild.querySelector("[data-vn]").focus(); };
     const wireSup = () => m.querySelectorAll("[data-sdel]").forEach(b => b.onclick = () => { b.closest("[data-si]").remove(); calc(); }); wireSup();
     const asb = $("#addSup"); if (asb) asb.onclick = () => { $("#psups").insertAdjacentHTML("beforeend", supRow({supplyId:S.supplies[0].id, qty:1}, Date.now())); wireSup(); calc(); };
     const curRecipe = () => [...m.querySelectorAll("[data-mi]")].map(row => ({spoolId:row.querySelector("[data-mspool]").value, grams:n(row.querySelector("[data-mg]").value)})).filter(x => x.grams > 0);
@@ -1860,7 +1897,13 @@ function productForm(p){
     $("#p_photo_del").onclick = () => { newPhoto = null; dropPhoto = true; const im = $("#p_photo_img"); im.removeAttribute("src"); im.style.visibility = "hidden"; $("#p_photo_del").hidden = true; $("#p_photo_pick").textContent = "Add photo"; };
     $("#psave").onclick = async () => { try{ read(); if (!p.name){ $("#p_name").focus(); return; }
       if (newPhoto){ p.photo = await savePhoto(p, newPhoto); } else if (dropPhoto){ p.photo = null; }
-      logProductEdit(isNew ? null : product(p.id), p); p.spoolId = ""; recompute(); const typed = n(p.stock), before = isNew ? 0 : n(product(p.id)?.stock); if (!isNew){ const i=S.products.findIndex(x=>x.id===p.id); S.products[i]=p; if (typed!==before) logMove(p.id, typed-before, "Edited in product"); } else { S.products.push(p); ensureLedger(); } persist("products","moves"); close(); render(); toast("Product saved"); }catch(e){ console.error(e); toast("Couldn't save: "+(e.message||e)); } };
+      logProductEdit(isNew ? null : product(p.id), p); p.spoolId = ""; recompute(); const old = isNew ? null : product(p.id), typed = hasVar(old) || hasVar(p) ? n(old?.stock) : n(p.stock), before = isNew ? 0 : n(old?.stock);
+      if (!isNew){ const i=S.products.findIndex(x=>x.id===p.id); S.products[i]=p; if (typed!==before) logMove(p.id, typed-before, "Edited in product");
+        /* first time colours are added: the stock you had moves to the first colour, so nothing is lost */
+        if (hasVar(p) && !hasVar(old)){ recompute(); const loose = vQty(p, ""); if (loose > 0){ logMove(p.id, -loose, "Colours added", "", ""); logMove(p.id, loose, "Colours added", "moved from no colour", p.variants[0].id); } }
+        /* a removed colour keeps its units under "No colour" until you recount */
+        if (hasVar(old)) old.variants.filter(v => !variantOf(p, v.id)).forEach(v => { const q = vQty(old, v.id); if (q > 0){ logMove(p.id, -q, "Colour removed", v.name, v.id); logMove(p.id, q, "Colour removed", v.name, ""); } });
+      } else { S.products.push(p); ensureLedger(); } persist("products","moves"); close(); render(); toast("Product saved"); }catch(e){ console.error(e); toast("Couldn't save: "+(e.message||e)); } };
     if (!isNew) $("#pdel").onclick = () => { close(); trash("products", product(p.id)); render(); };
   });
 }
@@ -1932,6 +1975,7 @@ function logProductEdit(before, after){
   f("Minimum stock", n(before.min), n(after.min)); f("Extras", n(before.extras), n(after.extras), money);
   f("Colour-change waste", n(before.flush), n(after.flush), v => g(v)+" g");
   const supSig = x => (x.supplies||[]).map(y => y.supplyId+":"+n(y.qty)).sort().join("|"); if (supSig(before) !== supSig(after)) ch.push({label:"Materials", from:"", to:"changed"}); f("NFC chip", !!before.nfc, !!after.nfc, v => v ? "Yes" : "No");
+  const vsig = x => (x.variants||[]).map(v => v.name).join(", "); if (vsig(before) !== vsig(after)) ch.push({label:"Colours", from:vsig(before)||"none", to:vsig(after)||"none"});
   if ((before.pcat||"") !== (after.pcat||"")) ch.push({label:"Category", from:before.pcat||"none", to:after.pcat||"none"});
   if ((before.audience||"") !== (after.audience||"")) ch.push({label:"For", from:audLabel(before.audience)||"Not set", to:audLabel(after.audience)||"Not set"});
   const tg = x => (x.tags||[]).join(", "); if (tg(before) !== tg(after)) ch.push({label:"Tags", from:tg(before)||"none", to:tg(after)||"none"});
@@ -1980,7 +2024,7 @@ function productView(pid){
       <div><span class="meta">Price</span><b>${money(p.price)}</b>${suggestPrice(c)?`<span class="meta">suggested ${money(suggestPrice(c))}</span>`:""}</div>
       <div><span class="meta">Unit cost</span><b>${money(c)}</b></div>
       <div><span class="meta">Profit per piece</span><b style="color:var(--${pr>=0?"good":"bad"})">${money(pr)}</b><span class="pill ${mg>=50?"good":mg>=25?"warn":"bad"}">${Math.round(mg)}%</span></div>
-      <div><span class="meta">In stock</span><b>${n(p.stock)}</b><span class="meta">${rsv?`${rsv} reserved · `:""}min ${n(p.min)}</span></div>
+      <div><span class="meta">In stock</span><b>${n(p.stock)}</b><span class="meta">${rsv?`${rsv} reserved · `:""}min ${n(p.min)}</span>${hasVar(p) ? `<span class="vchips">${Object.keys(p.vstock||{}).filter(k => variantOf(p, k) || vQty(p, k)).map(k => `<span class="vchip ${vQty(p, k) <= 0 ? "out" : ""}">${vSw(p, k)}${esc(vName(p, k))} <b class="num">${vQty(p, k)}</b></span>`).join("")}</span>` : ""}</div>
       <div><span class="meta">Can still print</span><b>${can===Infinity?"—":can}</b><span class="meta">with filament on hand</span></div>
       <div><span class="meta">Print time</span><b>${hrs(p.minutes)}</b><span class="meta">per piece</span></div>
     </div>
@@ -2176,10 +2220,11 @@ function printForm(pid, qty0, opts){
   const openSpecial = S.orders.filter(o => isSpecial(o) && !["delivered","cancelled"].includes(o.status));
   if (!S.products.length && !openSpecial.length){ toast("Add a product or a special order first"); return; }
   let p = printTarget(pid) || S.products[0] || specialTarget(openSpecial[0]);
-  const usageRows = (prod, qty) => { const ug = unitGrams(prod); return S.spools.map(s => { const m = ug.find(x=>x.spoolId===s.id); return {id:s.id, grams: m ? Math.round(m.grams*qty*100)/100 : 0}; }); };
+  const usageRows = (prod, qty, vid) => { const ug = prod.special ? unitGrams(prod) : unitGramsV(prod, vid); return S.spools.map(s => { const m = ug.find(x=>x.spoolId===s.id); return {id:s.id, grams: m ? Math.round(m.grams*qty*100)/100 : 0}; }); };
   modal("Log a print", `<div class="form">
     ${bambuDrop("r_bb", "Fill from a Bambu Studio sliced file (.gcode.3mf)")}
     <label class="f full">What did you print?<select id="r_p">${S.products.length?`<optgroup label="Products">${S.products.map(x=>`<option value="${x.id}" ${x.id===p.id?"selected":""}>${esc(x.name)} · ${esc(x.type)}</option>`).join("")}</optgroup>`:""}${openSpecial.length?`<optgroup label="Special orders">${openSpecial.map(o=>`<option value="order:${o.id}" ${"order:"+o.id===p.id?"selected":""}>${esc(o.customer||"Customer")} · ${esc((o.custom?.desc||"").slice(0,40))}</option>`).join("")}</optgroup>`:""}</select></label>
+    <label class="f full" id="r_vbox" hidden>Colour<select id="r_v"></select></label>
     <label class="f">Date<input id="r_date" type="date" value="${today()}"></label>
     <label class="f">Units in this print<input id="r_qty" type="number" min="1" value="${n(qty0)||1}"></label>
     ${durField("r_min", p.minutes, "Print time")}
@@ -2195,16 +2240,18 @@ function printForm(pid, qty0, opts){
     const setPurpose = () => { if (purposeFor === p.id) return; purposeFor = p.id; const box = $("#r_purpose"), st = p.special ? "special" : stageOf(p);
       box.hidden = st === "special" || st === "prod" || st === "retired";
       const want = opts.purpose && st !== "special" && st !== "prod" && st !== "retired" ? opts.purpose : ["idea","dev"].includes(st) ? "dev" : "prod"; const r0 = m.querySelector(`input[name="purpose"][value="${want}"]`); if (r0) r0.checked = true; };
+    let vFor = null;
     const fill = () => { p = printTarget($("#r_p").value); setPurpose(); const q = n($("#r_qty").value)||1; setDur("r_min", n(p.minutes)*q);
-      const rows = usageRows(p,q).filter(u=>u.grams>0); const used = new Set(rows.map(r=>r.id));
+      const hv = !p.special && hasVar(p); $("#r_vbox").hidden = !hv; if (hv && vFor !== p.id){ vFor = p.id; $("#r_v").innerHTML = vOptions(p, opts.v || p.variants[0].id, true); }
+      const rows = usageRows(p,q, hv ? $("#r_v").value : "").filter(u=>u.grams>0); const used = new Set(rows.map(r=>r.id));
       $("#r_use").innerHTML = rows.map(u=>useRow(u)).join("") + `<details><summary class="meta" style="cursor:pointer">Other spools</summary><div class="list" style="gap:6px;margin-top:6px">${S.spools.filter(s=>!used.has(s.id)).map(s=>useRow({id:s.id,grams:0})).join("")}</div></details>`; calc(); };
     const useRow = u => { const s=spool(u.id); return `<div class="mat" style="grid-template-columns:minmax(0,1fr) 100px"><span class="row" style="gap:8px;min-width:0"><span class="sw" style="background:${hex(s.color)}"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.name.trim())}</span><span class="meta num">${g(s.remaining)} left</span></span><input type="number" step="0.01" min="0" data-use="${s.id}" value="${u.grams}" aria-label="Grams of ${esc(s.name)}"></div>`; };
     const read = () => { const q = n($("#r_qty").value)||1, rr = readResult(m, q), f = rr.progress/100;
-      return {dev: !p.special && (m.querySelector('input[name="purpose"]:checked')||{}).value === "dev", product:$("#r_p").value, date:$("#r_date").value, qty:q, minutes:Math.round(n($("#r_min").value)*f), ...rr, notes:$("#r_notes").value.trim(), usage:[...m.querySelectorAll("[data-use]")].map(i=>({id:i.dataset.use, grams:Math.round(n(i.value)*f*100)/100}))}; };
+      return {dev: !p.special && (m.querySelector('input[name="purpose"]:checked')||{}).value === "dev", product:$("#r_p").value, v: !p.special && hasVar(p) ? $("#r_v").value : "", date:$("#r_date").value, qty:q, minutes:Math.round(n($("#r_min").value)*f), ...rr, notes:$("#r_notes").value.trim(), usage:[...m.querySelectorAll("[data-use]")].map(i=>({id:i.dataset.use, grams:Math.round(n(i.value)*f*100)/100}))}; };
     const calc = () => { const r = read(); const mc = r.usage.reduce((a,u)=>a+u.grams*ppg(spool(u.id)),0); const tc = r.minutes/60*runRate(); const ex = n(p.extras)*r.qty; const c = mc+tc+ex;
       const over = r.usage.find(u=>u.grams > n(spool(u.id)?.remaining));
-      $("#rcalc").innerHTML = `<div>Filament<b>${g(r.usage.reduce((a,u)=>a+u.grams,0))} g</b></div><div>Batch cost<b>${money(c)}</b></div><div>Per unit<b>${money(c/r.qty)}</b></div><div>${p.special?"For":r.dev?"Counts as":"Stock after"}<b>${p.special?"Special order":r.dev?"Development":n(p.stock)+r.goodQty}</b></div>${r.progress<100?`<div class="full" style="grid-column:1/-1">Counting ${r.progress}% of the filament and time: ${g(r.usage.reduce((a,u)=>a+u.grams,0))} g, ${hrs(r.minutes)}.</div>`:""}${over?`<div class="full alert bad" style="grid-column:1/-1">${esc(spool(over.id).name.trim())} only has ${g(spool(over.id).remaining)} g left.</div>`:""}`; };
-    $("#r_p").onchange = fill; $("#r_qty").oninput = () => { fill(); syncResult(m); }; m.addEventListener("input", e => { if (e.target.id!=="r_qty") calc(); }); m.addEventListener("change", () => { syncResult(m); calc(); });
+      $("#rcalc").innerHTML = `<div>Filament<b>${g(r.usage.reduce((a,u)=>a+u.grams,0))} g</b></div><div>Batch cost<b>${money(c)}</b></div><div>Per unit<b>${money(c/r.qty)}</b></div><div>${p.special?"For":r.dev?"Counts as":"Stock after"}<b>${p.special?"Special order":r.dev?"Development":(r.v ? vQty(p, r.v) : n(p.stock))+r.goodQty}</b>${r.v && !r.dev ? `<span class="meta">${esc(vName(p, r.v))}</span>` : ""}</div>${r.progress<100?`<div class="full" style="grid-column:1/-1">Counting ${r.progress}% of the filament and time: ${g(r.usage.reduce((a,u)=>a+u.grams,0))} g, ${hrs(r.minutes)}.</div>`:""}${over?`<div class="full alert bad" style="grid-column:1/-1">${esc(spool(over.id).name.trim())} only has ${g(spool(over.id).remaining)} g left.</div>`:""}`; };
+    $("#r_p").onchange = fill; $("#r_v").onchange = fill; $("#r_qty").oninput = () => { fill(); syncResult(m); }; m.addEventListener("input", e => { if (e.target.id!=="r_qty") calc(); }); m.addEventListener("change", () => { syncResult(m); calc(); });
     fill(); syncResult(m);
     let fromFile = false;
     wireDrop($("#r_bb"), {purpose:"print", canAdd: () => fromFile, apply: (r, mode) => {
@@ -2306,7 +2353,8 @@ function orderForm(o, preset){
   if (preset && preset.kind === "special") o.kind = "special";
   if (!o.custom) o.custom = {desc:"", price:0, deposit:0, est:[], estMin:0, photo:null};
   const estRow = (e,i) => `<div class="mat" data-ei="${i}"><select data-espool aria-label="Spool">${spoolOptions(e.spoolId)}</select><input data-eg type="number" step="0.01" min="0" value="${n(e.grams)}" aria-label="Grams"><button class="btn sm ghost" data-edel type="button" aria-label="Remove">✕</button></div>`;
-  const itemRow = (it,i) => `<div class="mat" data-oi="${i}" style="grid-template-columns:minmax(0,1fr) 70px 90px auto"><select data-op aria-label="Product">${S.products.map(p=>`<option value="${p.id}" ${p.id===it.product?"selected":""}>${esc(p.name)} · ${esc(p.type)}</option>`).join("")}</select><input data-oq type="number" min="1" value="${n(it.qty)}" aria-label="Quantity"><input data-opr type="number" step="0.01" value="${n(it.price)}" aria-label="Unit price"><button class="btn sm ghost" data-odel aria-label="Remove">✕</button></div>`;
+  const vSel = it => { const p = product(it.product); return hasVar(p) ? `<select data-ov aria-label="Colour">${vOptions(p, it.v || p.variants[0].id, true)}</select>` : `<span data-ovx hidden></span>`; };
+  const itemRow = (it,i) => `<div class="mat oitem" data-oi="${i}" style="grid-template-columns:minmax(0,1fr) 70px 90px auto"><select data-op aria-label="Product">${S.products.map(p=>`<option value="${p.id}" ${p.id===it.product?"selected":""}>${esc(p.name)} · ${esc(p.type)}</option>`).join("")}</select>${vSel(it)}<input data-oq type="number" min="1" value="${n(it.qty)}" aria-label="Quantity"><input data-opr type="number" step="0.01" value="${n(it.price)}" aria-label="Unit price"><button class="btn sm ghost" data-odel aria-label="Remove">✕</button></div>`;
   modal(isNew?"New order":"Edit order", `<div class="form">
     <label class="f">Customer<input id="o_c" value="${esc(o.customer)}"></label>
     <label class="f">Phone / handle<input id="o_ct" value="${esc(o.contact)}"></label>
@@ -2341,9 +2389,9 @@ function orderForm(o, preset){
     const read = () => { const t = otype(); o.kind = t;
       if (t === "special"){ o.items = []; Object.assign(o.custom, {desc:$("#o_desc").value.trim(), price:n($("#o_sprice").value), deposit:n($("#o_dep").value), estMin:n($("#o_emin").value),
         est:[...m.querySelectorAll("[data-ei]")].map(r => ({spoolId:r.querySelector("[data-espool]").value, grams:n(r.querySelector("[data-eg]").value)})).filter(e => e.grams > 0)}); }
-      else o.items = [...m.querySelectorAll("[data-oi]")].map(r=>({product:r.querySelector("[data-op]").value, qty:n(r.querySelector("[data-oq]").value)||1, price:n(r.querySelector("[data-opr]").value)})); Object.assign(o,{customer:$("#o_c").value.trim(), contact:$("#o_ct").value.trim(), channel:$("#o_ch").value, due:$("#o_due").value, discount:n($("#o_disc").value), shipCharge:n($("#o_shc").value), shipCost:n($("#o_shp").value), paid:$("#o_paid").checked, notes:$("#o_n").value.trim()}); };
+      else o.items = [...m.querySelectorAll("[data-oi]")].map(r=>{ const vs0 = r.querySelector("[data-ov]"); return {product:r.querySelector("[data-op]").value, qty:n(r.querySelector("[data-oq]").value)||1, price:n(r.querySelector("[data-opr]").value), ...(vs0 && vs0.value ? {v:vs0.value} : {})}; }); Object.assign(o,{customer:$("#o_c").value.trim(), contact:$("#o_ct").value.trim(), channel:$("#o_ch").value, due:$("#o_due").value, discount:n($("#o_disc").value), shipCharge:n($("#o_shc").value), shipCost:n($("#o_shp").value), paid:$("#o_paid").checked, notes:$("#o_n").value.trim()}); };
     const calc = () => { read(); const t=orderTotal(o), nt=orderNet(o), sp = isSpecial(o); $("#ocalc").innerHTML = `<div>Total<b>${money(t)}</b></div><div>${sp ? (specialPrints(o).length ? "Real cost" : "Estimated cost") : "Products cost"}<b>${money(orderCost(o))}</b></div>${sp && n(o.custom.deposit) && !o.paid ? `<div>Still to collect<b>${money(orderDue(o))}</b></div>` : ""}<div>Fees + packaging<b>${money(orderFees(o)+n(S.settings.packaging))}</b></div><div>Net profit<b style="color:var(--${nt>=0?"good":"bad"})">${money(nt)}</b></div>`; };
-    const wire = () => { m.querySelectorAll("[data-odel]").forEach(b => b.onclick = () => { b.closest("[data-oi]").remove(); calc(); }); m.querySelectorAll("[data-op]").forEach(sel => sel.onchange = () => { sel.closest("[data-oi]").querySelector("[data-opr]").value = n(product(sel.value)?.price); calc(); }); };
+    const wire = () => { m.querySelectorAll("[data-odel]").forEach(b => b.onclick = () => { b.closest("[data-oi]").remove(); calc(); }); m.querySelectorAll("[data-op]").forEach(sel => sel.onchange = () => { const row = sel.closest("[data-oi]"); row.querySelector("[data-opr]").value = n(product(sel.value)?.price); const old = row.querySelector("[data-ov],[data-ovx]"); old.outerHTML = vSel({product:sel.value}); calc(); }); };
     const wireEst = () => m.querySelectorAll("[data-edel]").forEach(b => b.onclick = () => { b.closest("[data-ei]").remove(); calc(); });
     m.addEventListener("input", calc); m.addEventListener("change", e => { if (e.target.name === "otype") showSec(); calc(); }); wire(); wireEst(); showSec(); calc(); hydratePhotos(m);
     $("#addItem").onclick = () => { if (!S.products.length) return; $("#oitems").insertAdjacentHTML("beforeend", itemRow({product:S.products[0].id, qty:1, price:n(S.products[0].price)}, Date.now())); wire(); calc(); };
@@ -2460,6 +2508,8 @@ function bind(){
   M.querySelectorAll("[data-print]").forEach(b => b.onclick = () => printForm(b.dataset.print, b.dataset.q));
   M.querySelectorAll("[data-step]").forEach(b => b.onclick = () => { const p = product(b.dataset.step); setStock(p.id, n(p.stock)+n(b.dataset.d), "Manual adjustment"); });
   M.querySelectorAll("[data-count]").forEach(i => i.onchange = () => setStock(i.dataset.count, i.value, "Count correction"));
+  M.querySelectorAll("[data-vstep]").forEach(b => b.onclick = () => { const [pid, vid] = b.dataset.vstep.split("|"), p = product(pid); setStock(pid, vQty(p, vid)+n(b.dataset.d), "Manual adjustment", "", vid); });
+  M.querySelectorAll("[data-vcount]").forEach(i => i.onchange = () => { const [pid, vid] = i.dataset.vcount.split("|"); setStock(pid, i.value, "Count correction", "", vid); });
   M.querySelectorAll("[data-adjp]").forEach(b => b.onclick = () => adjustStockForm(product(b.dataset.adjp)));
   M.querySelectorAll("[data-sell]").forEach(b => b.onclick = () => sellForm(product(b.dataset.sell)));
   M.querySelectorAll("[data-ep]").forEach(b => b.onclick = () => { filter.ep = b.dataset.ep; render(); });
